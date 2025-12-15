@@ -58,8 +58,8 @@ TWILIO_ACCOUNT_SID=ACxxxx
 TWILIO_AUTH_TOKEN=xxxxxx
 TWILIO_PHONE_NUMBER=+1234567890
 
-# AI Services
-ANTHROPIC_API_KEY=sk-ant-...
+# AI Services (Gemini - free tier available)
+GOOGLE_API_KEY=AIza...
 ```
 
 ### Optional Variables
@@ -106,7 +106,7 @@ RETRY_DELAY_MINUTES=120     # Default: 120 (2 hours)
 | `TWILIO_AUTH_TOKEN` | `initiate-call/index.ts`, `call-handler/index.ts`, `recording-status/index.ts` |
 | `TWILIO_PHONE_NUMBER` | `initiate-call/index.ts` |
 | `TWILIO_WEBHOOK_BASE_URL` | `initiate-call/index.ts`, `call-handler/index.ts`, `call-retry-scheduler/index.ts`, `stripe-webhook/index.ts` |
-| `ANTHROPIC_API_KEY` | `call-handler/index.ts` |
+| `GOOGLE_API_KEY` | `call-handler/index.ts` |
 | `OPENAI_API_KEY` | `recording-status/index.ts` (optional) |
 | `CALL_HOURS_START` | `initiate-call/index.ts` |
 | `CALL_HOURS_END` | `initiate-call/index.ts` |

@@ -74,7 +74,7 @@ export default function TestCallPage() {
 
             <div className="space-y-3">
               <Button
-                onClick={handleTestCall}
+                onClick={() => handleTestCall('/api/test-call')}
                 disabled={isLoading || !phoneNumber.trim()}
                 className="w-full"
                 variant="default"
