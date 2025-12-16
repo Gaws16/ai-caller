@@ -17,16 +17,16 @@ const addressSchema = z.object({
 })
 
 interface CheckoutFormProps {
-  book: {
+  product: {
     id: string
-    title: string
+    name: string
     price: number
   }
   paymentType: 'one_time' | 'subscription'
   onOrderCreated: (orderId: string) => void
 }
 
-export function CheckoutForm({ book, paymentType, onOrderCreated }: CheckoutFormProps) {
+export function CheckoutForm({ product, paymentType, onOrderCreated }: CheckoutFormProps) {
   const [formData, setFormData] = useState({
     name: '',
     phone: '',
@@ -80,12 +80,12 @@ export function CheckoutForm({ book, paymentType, onOrderCreated }: CheckoutForm
           customer_email: validated.email,
           items: [
             {
-              name: book.title,
+              name: product.name,
               quantity: 1,
-              price: book.price,
+              price: product.price,
             },
           ],
-          total_amount: book.price,
+          total_amount: product.price,
           currency: 'usd',
           delivery_address: validated.address,
           delivery_instructions: validated.instructions,
@@ -118,9 +118,11 @@ export function CheckoutForm({ book, paymentType, onOrderCreated }: CheckoutForm
   }
 
   return (
-    <Card>
+    <Card className="border-zinc-200 dark:border-zinc-800 hover:shadow-xl transition-all duration-300">
       <CardHeader>
-        <CardTitle>Delivery Information</CardTitle>
+        <CardTitle className="bg-gradient-to-r from-zinc-900 to-zinc-700 dark:from-white dark:to-zinc-300 bg-clip-text text-transparent">
+          {paymentType === 'one_time' ? 'Order Details' : 'Subscription Details'}
+        </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="space-y-2">

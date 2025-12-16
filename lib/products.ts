@@ -1,67 +1,98 @@
-export interface Book {
+export interface Product {
   id: string
-  title: string
-  author: string
+  name: string
+  category: string
   description: string
-  price: number
+  price: number // one-time purchase price
+  monthlyPrice: number
+  yearlyPrice: number
   imageUrl: string
+  features: string[]
   available: boolean
 }
 
-export const books: Book[] = [
+export const products: Product[] = [
   {
-    id: 'book-1',
-    title: 'The Great Adventure',
-    author: 'Jane Smith',
+    id: 'app-1',
+    name: 'FocusFlow Pro',
+    category: 'Productivity',
     description:
-      'An epic tale of courage and discovery. Follow the journey of a young explorer as they navigate uncharted territories and face incredible challenges.',
-    price: 19.99,
-    imageUrl: 'https://images.unsplash.com/photo-1544947950-fa07a98d237f?w=400&h=600&fit=crop',
+      'AI-powered focus timer and task manager that adapts to your workflow. Boost productivity with smart breaks, distraction blocking, and deep work analytics.',
+    price: 49.99,
+    monthlyPrice: 9.99,
+    yearlyPrice: 99.99,
+    imageUrl: 'https://images.unsplash.com/photo-1484480974693-6ca0a78fb36b?w=400&h=600&fit=crop',
+    features: ['AI Task Prioritization', 'Focus Analytics', 'Team Collaboration', 'Pomodoro Timer'],
     available: true,
   },
   {
-    id: 'book-2',
-    title: 'Science & Innovation',
-    author: 'Dr. Robert Chen',
+    id: 'app-2',
+    name: 'DesignKit Studio',
+    category: 'Design',
     description:
-      'A comprehensive guide to modern scientific breakthroughs and technological innovations that are shaping our future.',
-    price: 24.99,
-    imageUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&h=600&fit=crop',
+      'Professional design toolkit with AI-powered image editing, vector graphics, and unlimited cloud storage. Perfect for creators and design teams.',
+    price: 79.99,
+    monthlyPrice: 14.99,
+    yearlyPrice: 149.99,
+    imageUrl: 'https://images.unsplash.com/photo-1561070791-2526d30994b5?w=400&h=600&fit=crop',
+    features: ['AI Image Generation', 'Vector Editor', 'Unlimited Storage', 'Brand Kit'],
     available: true,
   },
   {
-    id: 'book-3',
-    title: 'Mystery at Midnight',
-    author: 'Sarah Johnson',
+    id: 'app-3',
+    name: 'DevTools Plus',
+    category: 'Development',
     description:
-      'A gripping mystery novel that will keep you on the edge of your seat. Detective Miller must solve a series of puzzling crimes before it\'s too late.',
-    price: 16.99,
-    imageUrl: 'https://images.unsplash.com/photo-1512820790803-83ca434da1c7?w=400&h=600&fit=crop',
+      'Complete developer environment with AI code completion, debugging tools, and integrated deployment pipeline. Ship code faster with confidence.',
+    price: 99.99,
+    monthlyPrice: 19.99,
+    yearlyPrice: 199.99,
+    imageUrl: 'https://images.unsplash.com/photo-1555066931-4365d14bab8c?w=400&h=600&fit=crop',
+    features: ['AI Code Assistant', 'Smart Debugging', 'CI/CD Pipeline', 'Team Workspace'],
     available: true,
   },
   {
-    id: 'book-4',
-    title: 'The Art of Cooking',
-    author: 'Chef Maria Garcia',
+    id: 'app-4',
+    name: 'ContentCraft AI',
+    category: 'Content Creation',
     description:
-      'Master the culinary arts with this beautifully illustrated cookbook featuring recipes from around the world and expert cooking techniques.',
-    price: 29.99,
-    imageUrl: 'https://images.unsplash.com/photo-1490645935967-10de6ba17061?w=400&h=600&fit=crop',
+      'Transform your content creation with AI writing, video editing, and social media scheduling. Create engaging content 10x faster.',
+    price: 129.99,
+    monthlyPrice: 24.99,
+    yearlyPrice: 249.99,
+    imageUrl: 'https://images.unsplash.com/photo-1499951360447-b19be8fe80f5?w=400&h=600&fit=crop',
+    features: ['AI Writing Assistant', 'Video Editor', 'Social Scheduler', 'SEO Optimizer'],
     available: true,
   },
   {
-    id: 'book-5',
-    title: 'Digital Transformation',
-    author: 'Michael Thompson',
+    id: 'app-5',
+    name: 'DataViz Pro',
+    category: 'Analytics',
     description:
-      'Learn how businesses are adapting to the digital age. Essential strategies and insights for modern entrepreneurs and business leaders.',
-    price: 22.99,
-    imageUrl: 'https://images.unsplash.com/photo-1481627834876-b7833e8f5570?w=400&h=600&fit=crop',
+      'Enterprise-grade data visualization and analytics platform. Turn complex data into actionable insights with beautiful interactive dashboards.',
+    price: 149.99,
+    monthlyPrice: 29.99,
+    yearlyPrice: 299.99,
+    imageUrl: 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=400&h=600&fit=crop',
+    features: ['Real-time Dashboards', 'Custom Reports', 'API Integration', 'Advanced Analytics'],
+    available: true,
+  },
+  {
+    id: 'app-6',
+    name: 'MindFlow Meditation',
+    category: 'Wellness',
+    description:
+      'Personalized meditation and mindfulness app with AI-guided sessions, sleep stories, and stress tracking. Find your inner peace daily.',
+    price: 59.99,
+    monthlyPrice: 12.99,
+    yearlyPrice: 129.99,
+    imageUrl: 'https://images.unsplash.com/photo-1506126613408-eca07ce68773?w=400&h=600&fit=crop',
+    features: ['AI Personalization', 'Sleep Programs', 'Stress Tracker', 'Breathing Exercises'],
     available: true,
   },
 ]
 
-export function getBookById(id: string): Book | undefined {
-  return books.find((book) => book.id === id)
+export function getProductById(id: string): Product | undefined {
+  return products.find((product) => product.id === id)
 }
 

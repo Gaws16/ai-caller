@@ -1,41 +1,43 @@
-'use client'
+"use client";
 
-import { useEffect, useState, Suspense } from 'react'
-import { useSearchParams, useRouter } from 'next/navigation'
-import { Card, CardContent } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import Link from 'next/link'
+import { useEffect, useState, Suspense } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import Link from "next/link";
 
 function CheckoutSuccessContent() {
-  const searchParams = useSearchParams()
-  const router = useRouter()
-  const orderId = searchParams.get('order')
-  const [mounted, setMounted] = useState(false)
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const orderId = searchParams.get("order");
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    setMounted(true)
+    setMounted(true);
     if (!orderId) {
-      router.push('/')
+      router.push("/");
     }
-  }, [orderId, router])
+  }, [orderId, router]);
 
   if (!mounted || !orderId) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-zinc-50 to-zinc-100 dark:from-zinc-900 dark:to-black">
-        <div className="animate-pulse text-zinc-600 dark:text-zinc-400">Loading...</div>
+        <div className="animate-pulse text-zinc-600 dark:text-zinc-400">
+          Loading...
+        </div>
       </div>
-    )
+    );
   }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-zinc-50 via-white to-zinc-50 dark:from-zinc-900 dark:via-zinc-950 dark:to-black">
       <header className="border-b border-zinc-200 bg-white/80 backdrop-blur-sm dark:bg-zinc-900/80">
         <div className="container mx-auto px-4 py-4">
-          <Link 
-            href="/" 
+          <Link
+            href="/"
             className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent hover:from-blue-700 hover:to-purple-700 transition-all duration-300"
           >
-            BookStore
+            AppHub
           </Link>
         </div>
       </header>
@@ -51,7 +53,7 @@ function CheckoutSuccessContent() {
                   <div className="absolute top-10 left-10 w-32 h-32 bg-green-400 rounded-full blur-3xl animate-pulse"></div>
                   <div className="absolute bottom-10 right-10 w-40 h-40 bg-emerald-400 rounded-full blur-3xl animate-pulse delay-1000"></div>
                 </div>
-                
+
                 {/* Success Icon with Animation */}
                 <div className="relative z-10">
                   <div className="inline-flex items-center justify-center w-24 h-24 rounded-full bg-gradient-to-br from-green-400 to-emerald-500 shadow-lg mb-6 transform hover:scale-110 transition-transform duration-300 hover:rotate-12">
@@ -69,14 +71,15 @@ function CheckoutSuccessContent() {
                       />
                     </svg>
                   </div>
-                  
+
                   <h1 className="text-4xl md:text-5xl font-bold text-zinc-900 dark:text-white mb-4">
-                    Payment Received
+                    Order Placed Successfully! 🎉
                   </h1>
-                  
+
                   <p className="text-xl text-zinc-700 dark:text-zinc-300 max-w-2xl mx-auto leading-relaxed">
-                    Your payment information has been successfully received and processed. 
-                    You will receive a confirmation call shortly to verify your order details.
+                    Your order has been successfully placed! You will receive a
+                    confirmation call shortly to verify your order details and
+                    help you get started.
                   </p>
                 </div>
               </div>
@@ -116,9 +119,12 @@ function CheckoutSuccessContent() {
                         What Happens Next?
                       </h3>
                       <p className="text-blue-800 dark:text-blue-200 leading-relaxed">
-                        Our team will contact you via phone within the next few minutes to confirm your order details. 
-                        Please keep your phone nearby and answer when we call. This verification call ensures your order 
-                        is processed accurately and delivered to the correct address.
+                        Our team will contact you via phone within the next few
+                        minutes to confirm your subscription and help you get
+                        started. Please keep your phone nearby and answer when
+                        we call. This verification call ensures your account is
+                        set up correctly and you can start enjoying your premium
+                        features immediately.
                       </p>
                     </div>
                   </div>
@@ -149,11 +155,11 @@ function CheckoutSuccessContent() {
                 {/* Action Button */}
                 <div className="pt-6 text-center">
                   <Link href="/">
-                    <Button 
-                      size="lg" 
+                    <Button
+                      size="lg"
                       className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-8 py-6 text-lg font-semibold shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300"
                     >
-                      Continue Shopping
+                      Explore More Apps
                     </Button>
                   </Link>
                 </div>
@@ -163,18 +169,19 @@ function CheckoutSuccessContent() {
         </div>
       </div>
     </div>
-  )
+  );
 }
 
 export default function CheckoutSuccessPage() {
   return (
-    <Suspense fallback={
-      <div className="flex min-h-screen items-center justify-center">
-        <p>Loading...</p>
-      </div>
-    }>
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center">
+          <p>Loading...</p>
+        </div>
+      }
+    >
       <CheckoutSuccessContent />
     </Suspense>
-  )
+  );
 }
-

@@ -3,7 +3,7 @@
 import { useEffect, useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { getBookById, type Book } from '@/lib/products'
+import { getProductById, type Product } from '@/lib/products'
 import { Elements } from '@stripe/react-stripe-js'
 import { getStripe } from '@/lib/stripe-client'
 import { CheckoutForm } from '@/components/checkout/checkout-form'
@@ -16,8 +16,9 @@ function CheckoutContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const supabase = createClient()
-  const [book, setBook] = useState<Book | null>(null)
+  const [product, setProduct] = useState<Product | null>(null)
   const [paymentType, setPaymentType] = useState<'one_time' | 'subscription'>('one_time')
+  const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly')
   const [loading, setLoading] = useState(true)
   const [authenticated, setAuthenticated] = useState(false)
 
@@ -28,32 +29,35 @@ function CheckoutContent() {
       } = await supabase.auth.getSession()
 
       if (!session) {
-        const bookId = searchParams.get('book')
+        const productId = searchParams.get('product')
         const type = searchParams.get('type')
-        const redirectUrl = `/checkout?book=${bookId}&type=${type || 'one_time'}`
+        const billing = searchParams.get('billing')
+        const redirectUrl = `/checkout?product=${productId}&type=${type || 'one_time'}&billing=${billing || 'monthly'}`
         router.push(`/login?redirect=${encodeURIComponent(redirectUrl)}`)
         return
       }
 
       setAuthenticated(true)
 
-      // Get book from URL params
-      const bookId = searchParams.get('book')
+      // Get product from URL params
+      const productId = searchParams.get('product')
       const type = searchParams.get('type') as 'one_time' | 'subscription' | null
+      const billing = searchParams.get('billing') as 'monthly' | 'yearly' | null
 
-      if (!bookId) {
+      if (!productId) {
         router.push('/')
         return
       }
 
-      const foundBook = getBookById(bookId)
-      if (!foundBook) {
+      const foundProduct = getProductById(productId)
+      if (!foundProduct) {
         router.push('/')
         return
       }
 
-      setBook(foundBook)
+      setProduct(foundProduct)
       setPaymentType(type || 'one_time')
+      setBillingCycle(billing || 'monthly')
       setLoading(false)
     }
 
@@ -66,20 +70,24 @@ function CheckoutContent() {
 
   if (loading || !authenticated) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <p>Loading...</p>
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-zinc-50 via-blue-50/30 to-purple-50/30 dark:from-black dark:via-blue-950/10 dark:to-purple-950/10">
+        <div className="animate-pulse text-lg bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+          Loading...
+        </div>
       </div>
     )
   }
 
-  if (!book) {
+  if (!product) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <Card>
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-zinc-50 via-blue-50/30 to-purple-50/30 dark:from-black dark:via-blue-950/10 dark:to-purple-950/10">
+        <Card className="hover:shadow-xl transition-shadow duration-300">
           <CardContent className="p-6 text-center">
-            <p className="mb-4">Book not found</p>
+            <p className="mb-4">Product not found</p>
             <Link href="/">
-              <Button>Return to Home</Button>
+              <Button className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 hover:scale-105 transition-all duration-300">
+                Return to Home
+              </Button>
             </Link>
           </CardContent>
         </Card>
@@ -87,41 +95,96 @@ function CheckoutContent() {
     )
   }
 
+  const price = paymentType === 'one_time'
+    ? product.price
+    : (billingCycle === 'monthly' ? product.monthlyPrice : product.yearlyPrice)
+
   return (
-    <div className="min-h-screen bg-zinc-50 dark:bg-black">
-      <header className="border-b bg-white dark:bg-zinc-900">
+    <div className="min-h-screen bg-gradient-to-br from-zinc-50 via-blue-50/30 to-purple-50/30 dark:from-black dark:via-blue-950/10 dark:to-purple-950/10">
+      <header className="sticky top-0 z-50 border-b bg-white/80 dark:bg-zinc-900/80 backdrop-blur-lg transition-all duration-300 hover:shadow-lg">
         <div className="container mx-auto px-4 py-4">
-          <Link href="/" className="text-2xl font-bold">
-            BookStore
+          <Link href="/" className="group flex items-center gap-2 text-2xl font-bold transition-all duration-300">
+            <span className="bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent group-hover:from-blue-500 group-hover:via-purple-500 group-hover:to-pink-500 transition-all duration-300">
+              AppHub
+            </span>
           </Link>
         </div>
       </header>
 
       <div className="container mx-auto px-4 py-8">
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold mb-2">Checkout</h1>
-          <p className="text-zinc-600 dark:text-zinc-400">
-            Complete your order below. You'll receive a confirmation call shortly after.
+        <div className="mb-8 text-center">
+          <h1 className="text-4xl font-bold mb-3 bg-gradient-to-r from-zinc-900 to-zinc-700 dark:from-white dark:to-zinc-300 bg-clip-text text-transparent">
+            {paymentType === 'one_time' ? 'Complete Your Purchase' : 'Complete Your Subscription'}
+          </h1>
+          <p className="text-lg text-zinc-600 dark:text-zinc-400">
+            {paymentType === 'one_time'
+              ? 'One-time payment. Instant access to your product.'
+              : 'Start your 14-day free trial. No credit card charged until trial ends.'}
           </p>
         </div>
 
         {/* Payment Type Selector */}
-        <Card className="mb-6">
-          <CardContent className="p-4">
-            <div className="flex gap-4">
+        <Card className="mb-6 overflow-hidden border-zinc-200 dark:border-zinc-800 hover:shadow-xl transition-all duration-300">
+          <CardContent className="p-6">
+            <div className="flex flex-col sm:flex-row gap-4 mb-4">
               <Button
                 variant={paymentType === 'one_time' ? 'default' : 'outline'}
                 onClick={() => setPaymentType('one_time')}
+                className={paymentType === 'one_time'
+                  ? "flex-1 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 transform transition-all duration-300 hover:scale-105"
+                  : "flex-1 hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/30 transition-all duration-300"}
               >
-                One-time Purchase
+                <div className="text-center w-full">
+                  <div className="font-semibold">Buy Once</div>
+                  <div className="text-sm opacity-90">${product.price}</div>
+                </div>
               </Button>
               <Button
                 variant={paymentType === 'subscription' ? 'default' : 'outline'}
                 onClick={() => setPaymentType('subscription')}
+                className={paymentType === 'subscription'
+                  ? "flex-1 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 transform transition-all duration-300 hover:scale-105"
+                  : "flex-1 hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/30 transition-all duration-300"}
               >
-                Monthly Subscription
+                <div className="text-center w-full">
+                  <div className="font-semibold">Subscribe</div>
+                  <div className="text-sm opacity-90">From ${product.monthlyPrice}/mo</div>
+                </div>
               </Button>
             </div>
+
+            {/* Billing Cycle Selector - Only show for subscriptions */}
+            {paymentType === 'subscription' && (
+              <div className="flex flex-col sm:flex-row gap-4 pt-4 border-t">
+                <Button
+                  variant={billingCycle === 'monthly' ? 'default' : 'outline'}
+                  onClick={() => setBillingCycle('monthly')}
+                  className={billingCycle === 'monthly'
+                    ? "flex-1 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 transform transition-all duration-300 hover:scale-105"
+                    : "flex-1 hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/30 transition-all duration-300"}
+                >
+                  <div className="text-center w-full">
+                    <div className="font-semibold">Monthly</div>
+                    <div className="text-sm opacity-90">${product.monthlyPrice}/month</div>
+                  </div>
+                </Button>
+                <Button
+                  variant={billingCycle === 'yearly' ? 'default' : 'outline'}
+                  onClick={() => setBillingCycle('yearly')}
+                  className={billingCycle === 'yearly'
+                    ? "flex-1 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 transform transition-all duration-300 hover:scale-105 relative"
+                    : "flex-1 hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/30 transition-all duration-300 relative"}
+                >
+                  <div className="absolute -top-2 -right-2 bg-green-500 text-white text-xs px-2 py-0.5 rounded-full font-semibold">
+                    Save {Math.round((1 - product.yearlyPrice / (product.monthlyPrice * 12)) * 100)}%
+                  </div>
+                  <div className="text-center w-full">
+                    <div className="font-semibold">Yearly</div>
+                    <div className="text-sm opacity-90">${product.yearlyPrice}/year</div>
+                  </div>
+                </Button>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -131,22 +194,25 @@ function CheckoutContent() {
             options={{
               mode: 'payment',
               currency: 'usd',
-              amount: Math.round(book.price * 100),
+              amount: Math.round(price * 100),
               paymentMethodCreation: 'manual',
               appearance: {
                 theme: 'stripe',
               },
-              loader: 'auto',
             }}
           >
             <CheckoutForm
-              book={{ id: book.id, title: book.title, price: book.price }}
+              product={{ id: product.id, name: product.name, price }}
               paymentType={paymentType}
               onOrderCreated={handleOrderCreated}
             />
           </Elements>
-          <div className="lg:sticky lg:top-8 lg:h-fit">
-            <OrderSummary book={book} paymentType={paymentType} />
+          <div className="lg:sticky lg:top-24 lg:h-fit">
+            <OrderSummary
+              product={product}
+              paymentType={paymentType}
+              billingCycle={billingCycle}
+            />
           </div>
         </div>
       </div>

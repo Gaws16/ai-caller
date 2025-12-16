@@ -23,7 +23,7 @@ export async function POST() {
   })
 }
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   // Handle GET requests as well for testing
-  return POST(request)
+  return POST()
 }
