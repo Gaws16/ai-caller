@@ -147,13 +147,19 @@ async function processCallOutcome(callId: string) {
 }
 
 async function capturePaymentAfterConfirmation(orderId: string) {
-  // Get payment intent ID
-  const { data: payment } = await supabase
+  // Get payment intent ID - use limit(1) instead of single() to handle duplicates gracefully
+  const { data: payments, error: paymentError } = await supabase
     .from('payments')
-    .select('stripe_payment_intent_id')
+    .select('stripe_payment_intent_id, status')
     .eq('order_id', orderId)
     .eq('status', 'pending')
-    .single()
+    .order('created_at', { ascending: true })
+    .limit(1)
+
+  const payment = payments?.[0]
+
+  console.log('Looking for payment with order_id:', orderId)
+  console.log('Found payments:', payments?.length || 0, 'using first one:', payment)
 
   if (!payment || !payment.stripe_payment_intent_id) {
     console.error('Payment intent not found for order:', orderId)
@@ -170,12 +176,16 @@ async function capturePaymentAfterConfirmation(orderId: string) {
 }
 
 async function cancelPaymentAfterCallCancellation(orderId: string) {
-  const { data: payment } = await supabase
+  // Use limit(1) instead of single() to handle duplicates gracefully
+  const { data: payments } = await supabase
     .from('payments')
     .select('stripe_payment_intent_id')
     .eq('order_id', orderId)
     .eq('status', 'pending')
-    .single()
+    .order('created_at', { ascending: true })
+    .limit(1)
+
+  const payment = payments?.[0]
 
   if (!payment || !payment.stripe_payment_intent_id) {
     console.error('Payment intent not found for order:', orderId)

@@ -359,6 +359,24 @@ inspector_port = 8083
 # The Deno major version to use.
 deno_version = 2
 
+# Edge Function configurations
+# External webhooks (Stripe, Twilio) must be publicly accessible (no JWT required)
+# Security is handled by the functions via signature verification
+
+# Stripe webhook - verifies stripe-signature header
+[functions.stripe-webhook]
+verify_jwt = false
+
+# Twilio webhooks - called by Twilio for call flow
+[functions.call-handler]
+verify_jwt = false
+
+[functions.call-status]
+verify_jwt = false
+
+[functions.recording-status]
+verify_jwt = false
+
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 

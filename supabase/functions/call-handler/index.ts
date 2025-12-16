@@ -262,7 +262,7 @@ function generateTwiML(
 <Response>
   <Gather input="speech" timeout="5" action="${baseUrl}/functions/v1/call-handler?call_id=${callId}">
     <Say voice="Polly.Joanna">
-      Hello! This is our store calling to confirm your order.
+      Hello ${order.customer_name}! This is our store calling to confirm your order.
       You ordered ${itemsList}. Is this correct?
     </Say>
   </Gather>
