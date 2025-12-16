@@ -61,6 +61,12 @@ serve(async (req) => {
   // Handle different event types
   try {
     switch (event.type) {
+      // NEW: SetupIntent flow - triggers call after card is saved
+      case "setup_intent.succeeded":
+        await handleSetupIntentSucceeded(event);
+        break;
+
+      // LEGACY: PaymentIntent flow (kept for backwards compatibility)
       case "payment_intent.amount_capturable_updated":
         await handlePaymentAuthorized(event);
         break;
@@ -112,6 +118,59 @@ serve(async (req) => {
     );
   }
 });
+
+// NEW: Handle SetupIntent succeeded - card saved, trigger confirmation call
+async function handleSetupIntentSucceeded(event: Stripe.Event) {
+  const setupIntent = event.data.object as Stripe.SetupIntent;
+  const orderId = setupIntent.metadata.order_id;
+
+  console.log(`SetupIntent succeeded for order ${orderId}`);
+
+  if (!orderId) {
+    console.log("No order_id in SetupIntent metadata, skipping");
+    return;
+  }
+
+  // Wait for order to exist (might be created slightly after)
+  let order;
+  for (let i = 0; i < 3; i++) {
+    const { data } = await supabase
+      .from("orders")
+      .select("id, customer_phone, payment_status")
+      .eq("id", orderId)
+      .single();
+    if (data) {
+      order = data;
+      break;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1000 * (i + 1)));
+  }
+
+  if (!order) {
+    throw new Error(`Order ${orderId} not found after retry`);
+  }
+
+  // Check if a call was already triggered for this order (prevent duplicate calls)
+  const { data: existingCall } = await supabase
+    .from("calls")
+    .select("id")
+    .eq("order_id", orderId)
+    .limit(1);
+
+  if (existingCall && existingCall.length > 0) {
+    console.log(`Call already exists for order ${orderId}, skipping`);
+    return;
+  }
+
+  // Update payment status to show card is saved
+  await supabase
+    .from("orders")
+    .update({ payment_status: "authorized" }) // Card is saved, ready to charge
+    .eq("id", orderId);
+
+  // Trigger the confirmation call
+  await triggerCall(orderId);
+}
 
 async function handlePaymentAuthorized(event: Stripe.Event) {
   const paymentIntent = event.data.object as Stripe.PaymentIntent;

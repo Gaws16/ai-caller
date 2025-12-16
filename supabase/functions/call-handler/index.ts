@@ -72,6 +72,25 @@ serve(async (req) => {
         .from('calls')
         .update({ responses })
         .eq('id', callId)
+
+      // Handle quantity changes
+      if (currentStep === 'QUANTITY_CONFIRMATION' && intent === 'CHANGE' && extractedData.changes) {
+        const updateResult = await processQuantityChanges(order, extractedData.changes)
+        if (updateResult.success) {
+          // Reload order with updated data for TwiML generation
+          const { data: updatedOrder } = await supabase
+            .from('orders')
+            .select('*')
+            .eq('id', order.id)
+            .single()
+          if (updatedOrder) {
+            Object.assign(order, updatedOrder)
+          }
+          // Mark that we should show updated quantities
+          extractedData.quantityUpdated = true
+        }
+        // With SetupIntent flow, quantity changes always succeed (unless item not found)
+      }
     } catch (error) {
       console.error('Error classifying intent:', error)
       // Fallback to keyword classification
@@ -178,6 +197,36 @@ Intent definitions:
 - CANCEL: Customer wants to cancel
 - UNCLEAR: Can't determine intent
 `,
+    QUANTITY_CONFIRMATION: `
+You are analyzing a customer's response about item quantities in their order.
+
+Current order items: ${JSON.stringify(items)}
+Customer said: "${speech}"
+
+Classify intent and extract any quantity changes. Respond with JSON only:
+{
+  "intent": "CONFIRM" | "CHANGE" | "CANCEL" | "UNCLEAR",
+  "data": {
+    "changes": [
+      {
+        "item_name": "exact or partial item name from order",
+        "new_quantity": number (0 to remove item, or new quantity),
+        "action": "update" | "remove"
+      }
+    ]
+  }
+}
+
+Intent definitions:
+- CONFIRM: Customer confirms quantities are correct (e.g., "yes", "that's right", "correct")
+- CHANGE: Customer wants to change quantities (e.g., "change pizza to 3", "remove the salad", "I want 2 more burgers")
+- CANCEL: Customer wants to cancel entire order
+- UNCLEAR: Can't determine intent or customer asked to repeat
+
+For CHANGE intent, extract ALL quantity changes mentioned. Match item names flexibly (e.g., "pizza" matches "Pepperoni Pizza").
+If they say "remove" or "delete", set new_quantity to 0 and action to "remove".
+If they say "add 2 more", calculate new_quantity = current + 2.
+`,
     DELIVERY_TIME: `
 You are analyzing a customer's delivery time preference.
 
@@ -235,9 +284,20 @@ function getNextStep(
     return current // Stay on same step
   }
 
-  // State transitions
+  // State transitions - handle special cases for quantity changes
+  if (current === 'QUANTITY_CONFIRMATION') {
+    if (intent === 'CHANGE') {
+      // Stay on quantity step to confirm changes
+      return 'QUANTITY_CONFIRMATION'
+    }
+    // After confirming quantities, proceed to address
+    return 'ADDRESS_CONFIRMATION'
+  }
+
+  // Standard state transitions
   const transitions: Record<string, string> = {
-    ORDER_CONFIRMATION: 'ADDRESS_CONFIRMATION',
+    ORDER_CONFIRMATION: 'QUANTITY_CONFIRMATION',
+    QUANTITY_CONFIRMATION: 'ADDRESS_CONFIRMATION',
     ADDRESS_CONFIRMATION: 'PAYMENT_CONFIRMATION',
     PAYMENT_CONFIRMATION: 'DELIVERY_TIME',
     DELIVERY_TIME: 'CALL_COMPLETE_CONFIRMED',
@@ -270,12 +330,37 @@ function generateTwiML(
   <Redirect>${baseUrl}/functions/v1/call-handler?call_id=${callId}</Redirect>
 </Response>`
 
+    case 'QUANTITY_CONFIRMATION':
+      // Build a detailed list of items with quantities
+      const quantityList = items
+        .map((i: any) => `${i.quantity} ${i.name} at $${i.price} each`)
+        .join(', ')
+
+      // Different messages based on context
+      let quantityMessage = ''
+      if (extractedData.quantityUpdated) {
+        quantityMessage = `I've updated your order. You now have ${quantityList}. Your new total is $${order.total_amount}. Is this correct, or would you like to make more changes?`
+      } else {
+        quantityMessage = `Let me confirm the quantities. You have ${quantityList}. Your current total is $${order.total_amount}. Are these quantities correct? If you'd like to change any quantity, please tell me now.`
+      }
+
+      return `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Gather input="speech" timeout="7" action="${baseUrl}/functions/v1/call-handler?call_id=${callId}">
+    <Say voice="Polly.Joanna">
+      ${quantityMessage}
+    </Say>
+  </Gather>
+  <Say>We didn't receive your response. Please try again.</Say>
+  <Redirect>${baseUrl}/functions/v1/call-handler?call_id=${callId}</Redirect>
+</Response>`
+
     case 'ADDRESS_CONFIRMATION':
       return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Gather input="speech" timeout="5" action="${baseUrl}/functions/v1/call-handler?call_id=${callId}">
     <Say voice="Polly.Joanna">
-      Great! Your delivery address is ${order.delivery_address}. Is this correct? 
+      Great! Your delivery address is ${order.delivery_address}. Is this correct?
       If you need to change it, please say the new address.
     </Say>
   </Gather>
@@ -343,4 +428,95 @@ function generateTwiML(
 </Response>`
   }
 }
+
+// Process quantity changes - updates database
+// With SetupIntent flow, we can allow any quantity change (increase or decrease)
+// The final amount will be charged after call confirmation
+async function processQuantityChanges(
+  order: any,
+  changes: Array<{ item_name: string; new_quantity: number; action: string }>
+): Promise<{ success: boolean; newTotal?: number; error?: string }> {
+  try {
+    const items = Array.isArray(order.items) ? [...order.items] : []
+    let itemsModified = false
+    const originalTotal = Number(order.total_amount)
+
+    console.log('Processing quantity changes:', changes)
+
+    for (const change of changes) {
+      // Find the matching item (fuzzy match)
+      const itemIndex = items.findIndex((item: any) =>
+        item.name.toLowerCase().includes(change.item_name.toLowerCase()) ||
+        change.item_name.toLowerCase().includes(item.name.toLowerCase())
+      )
+
+      if (itemIndex === -1) {
+        console.log(`Item not found: ${change.item_name}`)
+        continue
+      }
+
+      if (change.action === 'remove' || change.new_quantity === 0) {
+        // Remove item from order
+        console.log(`Removing item: ${items[itemIndex].name}`)
+        items.splice(itemIndex, 1)
+        itemsModified = true
+      } else if (change.new_quantity > 0) {
+        // Update quantity
+        console.log(`Updating ${items[itemIndex].name} quantity from ${items[itemIndex].quantity} to ${change.new_quantity}`)
+        items[itemIndex].quantity = change.new_quantity
+        itemsModified = true
+      }
+    }
+
+    if (!itemsModified) {
+      console.log('No items were modified')
+      return { success: false, error: 'No matching items found' }
+    }
+
+    // Check if order still has items
+    if (items.length === 0) {
+      console.log('All items removed - order would be empty')
+      return { success: false, error: 'Cannot remove all items' }
+    }
+
+    // Recalculate total
+    const newTotal = items.reduce(
+      (sum: number, item: any) => sum + item.price * item.quantity,
+      0
+    )
+
+    console.log(`New total calculated: $${newTotal} (was $${originalTotal})`)
+
+    // With SetupIntent flow, we can allow any quantity change (increase or decrease)
+    // The final amount will be charged after call confirmation
+
+    // Update order in database
+    const { error: updateError } = await supabase
+      .from('orders')
+      .update({
+        items: items,
+        total_amount: newTotal,
+      })
+      .eq('id', order.id)
+
+    if (updateError) {
+      console.error('Failed to update order:', updateError)
+      return { success: false, error: updateError.message }
+    }
+
+    // Also update the payment record amount (for consistency)
+    await supabase
+      .from('payments')
+      .update({ amount: newTotal })
+      .eq('order_id', order.id)
+      .eq('status', 'pending')
+
+    console.log('Quantity changes processed successfully')
+    return { success: true, newTotal }
+  } catch (error) {
+    console.error('Error processing quantity changes:', error)
+    return { success: false, error: error.message }
+  }
+}
+
 

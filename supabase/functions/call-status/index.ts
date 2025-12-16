@@ -146,11 +146,15 @@ async function processCallOutcome(callId: string) {
   }
 }
 
+// NEW: Create and charge PaymentIntent after call confirmation
+// This is the SetupIntent flow - we create the PaymentIntent now with the final amount
 async function capturePaymentAfterConfirmation(orderId: string) {
-  // Get payment intent ID - use limit(1) instead of single() to handle duplicates gracefully
-  const { data: payments, error: paymentError } = await supabase
+  console.log('Creating payment for confirmed order:', orderId)
+
+  // Get payment record with saved payment method
+  const { data: payments } = await supabase
     .from('payments')
-    .select('stripe_payment_intent_id, status')
+    .select('id, payment_method_id, stripe_payment_intent_id, amount, currency, status')
     .eq('order_id', orderId)
     .eq('status', 'pending')
     .order('created_at', { ascending: true })
@@ -158,28 +162,120 @@ async function capturePaymentAfterConfirmation(orderId: string) {
 
   const payment = payments?.[0]
 
-  console.log('Looking for payment with order_id:', orderId)
-  console.log('Found payments:', payments?.length || 0, 'using first one:', payment)
-
-  if (!payment || !payment.stripe_payment_intent_id) {
-    console.error('Payment intent not found for order:', orderId)
+  if (!payment) {
+    console.error('Payment record not found for order:', orderId)
     return
   }
 
-  try {
-    // Capture the payment
-    await stripe.paymentIntents.capture(payment.stripe_payment_intent_id)
-    // Stripe will send payment_intent.succeeded webhook which will update the database
-  } catch (error) {
-    console.error('Error capturing payment:', error)
+  // Get the current order total and customer ID (may have changed during call)
+  const { data: order, error: orderError } = await supabase
+    .from('orders')
+    .select('total_amount, currency, stripe_customer_id')
+    .eq('id', orderId)
+    .single()
+
+  if (orderError) {
+    console.error('Error fetching order:', orderError.message, orderError.details)
+    return
+  }
+
+  if (!order) {
+    console.error('Order not found:', orderId)
+    return
+  }
+
+  const finalAmount = Math.round(Number(order.total_amount) * 100) // Convert to cents
+  const currency = order.currency || 'usd'
+  const customerId = order.stripe_customer_id
+
+  console.log(`Final amount: ${finalAmount} cents (${order.total_amount} ${currency})`)
+  console.log(`Customer ID: ${customerId}`)
+
+  // Check if we have a payment method (SetupIntent flow) or payment intent (legacy flow)
+  if (payment.payment_method_id) {
+    // NEW SetupIntent flow: Create and charge a new PaymentIntent
+    try {
+      console.log('Using SetupIntent flow with payment_method:', payment.payment_method_id)
+
+      if (!customerId) {
+        console.error('No customer ID found for order - cannot charge off-session')
+        throw new Error('Customer ID required for off-session payment')
+      }
+
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: finalAmount,
+        currency: currency,
+        customer: customerId, // Required for off-session payments
+        payment_method: payment.payment_method_id,
+        confirm: true,
+        off_session: true,
+        metadata: {
+          order_id: orderId,
+        },
+      })
+
+      console.log('PaymentIntent created and charged:', paymentIntent.id, paymentIntent.status)
+
+      // Update payment record with the new payment intent ID
+      await supabase
+        .from('payments')
+        .update({
+          stripe_payment_intent_id: paymentIntent.id,
+          amount: order.total_amount,
+          status: paymentIntent.status === 'succeeded' ? 'succeeded' : 'pending',
+        })
+        .eq('id', payment.id)
+
+      // Update order status
+      if (paymentIntent.status === 'succeeded') {
+        await supabase
+          .from('orders')
+          .update({ payment_status: 'paid' })
+          .eq('id', orderId)
+      }
+
+    } catch (error) {
+      console.error('Error creating payment:', error)
+
+      // Update payment status to failed
+      await supabase
+        .from('payments')
+        .update({ status: 'failed' })
+        .eq('id', payment.id)
+
+      await supabase
+        .from('orders')
+        .update({ payment_status: 'failed' })
+        .eq('id', orderId)
+    }
+  } else if (payment.stripe_payment_intent_id) {
+    // LEGACY PaymentIntent flow: Capture existing authorization
+    try {
+      console.log('Using legacy flow, capturing payment_intent:', payment.stripe_payment_intent_id)
+
+      // For legacy flow, we might need to update amount if it changed
+      // Note: Can only capture up to authorized amount
+      await stripe.paymentIntents.capture(payment.stripe_payment_intent_id, {
+        amount_to_capture: finalAmount,
+      })
+
+      console.log('Payment captured successfully')
+    } catch (error) {
+      console.error('Error capturing payment:', error)
+    }
+  } else {
+    console.error('No payment method or payment intent found for order:', orderId)
   }
 }
 
+// Handle call cancellation - no charge needed
 async function cancelPaymentAfterCallCancellation(orderId: string) {
-  // Use limit(1) instead of single() to handle duplicates gracefully
+  console.log('Cancelling order after call rejection:', orderId)
+
+  // Get payment record to check if there's a PaymentIntent to cancel
   const { data: payments } = await supabase
     .from('payments')
-    .select('stripe_payment_intent_id')
+    .select('stripe_payment_intent_id, payment_method_id')
     .eq('order_id', orderId)
     .eq('status', 'pending')
     .order('created_at', { ascending: true })
@@ -187,25 +283,35 @@ async function cancelPaymentAfterCallCancellation(orderId: string) {
 
   const payment = payments?.[0]
 
-  if (!payment || !payment.stripe_payment_intent_id) {
-    console.error('Payment intent not found for order:', orderId)
-    return
+  // If there's an existing PaymentIntent (legacy flow), cancel it
+  if (payment?.stripe_payment_intent_id) {
+    try {
+      await stripe.paymentIntents.cancel(payment.stripe_payment_intent_id)
+      console.log('PaymentIntent cancelled')
+    } catch (error) {
+      console.error('Error cancelling PaymentIntent:', error)
+    }
   }
 
-  try {
-    // Cancel the payment intent (release funds)
-    await stripe.paymentIntents.cancel(payment.stripe_payment_intent_id)
+  // For SetupIntent flow, no PaymentIntent exists yet, so nothing to cancel with Stripe
+  // Just update the database
 
-    // Update database
-    await supabase
-      .from('orders')
-      .update({
-        payment_status: 'cancelled',
-        status: 'cancelled',
-      })
-      .eq('id', orderId)
-  } catch (error) {
-    console.error('Error cancelling payment:', error)
-  }
+  // Update order status
+  await supabase
+    .from('orders')
+    .update({
+      payment_status: 'cancelled',
+      status: 'cancelled',
+    })
+    .eq('id', orderId)
+
+  // Update payment status
+  await supabase
+    .from('payments')
+    .update({ status: 'cancelled' })
+    .eq('order_id', orderId)
+    .eq('status', 'pending')
+
+  console.log('Order cancelled successfully')
 }
 

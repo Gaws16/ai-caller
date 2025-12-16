@@ -10,12 +10,70 @@ export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
   typescript: true,
 })
 
+export interface CreateSetupIntentParams {
+  paymentMethodId: string
+  orderId: string
+  returnUrl: string
+  customerId: string // Required for off-session payments
+  metadata?: Record<string, string>
+}
+
+/**
+ * Create a Stripe Customer for storing payment methods
+ */
+export async function createCustomer({
+  email,
+  name,
+  phone,
+  metadata = {},
+}: {
+  email?: string
+  name: string
+  phone?: string
+  metadata?: Record<string, string>
+}): Promise<Stripe.Customer> {
+  const customer = await stripe.customers.create({
+    email,
+    name,
+    phone,
+    metadata,
+  })
+  return customer
+}
+
+/**
+ * Create a Setup Intent to save the payment method without charging
+ * This is used for the "confirm before charging" flow
+ * The payment method is automatically attached to the customer on success
+ */
+export async function createSetupIntent({
+  paymentMethodId,
+  orderId,
+  returnUrl,
+  customerId,
+  metadata = {},
+}: CreateSetupIntentParams): Promise<Stripe.SetupIntent> {
+  const setupIntent = await stripe.setupIntents.create({
+    customer: customerId, // Required for off-session reuse
+    payment_method: paymentMethodId,
+    confirm: true, // Confirm immediately to validate the card
+    usage: 'off_session', // Allow charging later without customer present
+    return_url: returnUrl, // Required for 3D Secure authentication
+    metadata: {
+      order_id: orderId,
+      ...metadata,
+    },
+  })
+
+  return setupIntent
+}
+
 export interface CreatePaymentIntentParams {
   amount: number // in cents
   currency: string
   paymentMethodId: string
   orderId: string
-  returnUrl: string // URL to redirect after payment confirmation
+  returnUrl?: string
   metadata?: Record<string, string>
 }
 
@@ -38,7 +96,33 @@ export async function createPaymentIntent({
     capture_method: 'manual', // KEY: Don't capture yet!
     confirmation_method: 'manual',
     confirm: true,
-    return_url: returnUrl, // Required by Stripe for payment confirmation
+    return_url: returnUrl,
+    metadata: {
+      order_id: orderId,
+      ...metadata,
+    },
+  })
+
+  return paymentIntent
+}
+
+/**
+ * Create and immediately capture a Payment Intent
+ * Used after call confirmation when we know the final amount
+ */
+export async function createAndCapturePaymentIntent({
+  amount,
+  currency,
+  paymentMethodId,
+  orderId,
+  metadata = {},
+}: Omit<CreatePaymentIntentParams, 'returnUrl'>): Promise<Stripe.PaymentIntent> {
+  const paymentIntent = await stripe.paymentIntents.create({
+    amount,
+    currency,
+    payment_method: paymentMethodId,
+    confirm: true,
+    off_session: true, // Customer is not present
     metadata: {
       order_id: orderId,
       ...metadata,

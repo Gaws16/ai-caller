@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
-import { createPaymentIntent, getPaymentMethodDetails } from "@/lib/stripe";
+import { createSetupIntent, createCustomer, stripe } from "@/lib/stripe";
 import { z } from "zod";
 import type { Database } from "@/lib/supabase/types";
 
@@ -63,25 +63,59 @@ export async function POST(request: NextRequest) {
 
     const orderResult = order as Database["public"]["Tables"]["orders"]["Row"];
 
-    // Create Stripe Payment Intent with manual capture
+    // Create Stripe Setup Intent to save card without charging
+    // Payment will be created AFTER call confirmation with final amount
     try {
-      // Get the base URL for return URL
-      const baseUrl =
-        process.env.NEXT_PUBLIC_APP_URL ||
-        request.headers.get("origin") ||
-        `http://${request.headers.get("host") || "localhost:3000"}`;
-      const returnUrl = `${baseUrl}/checkout/success?order=${orderResult.id}`;
+      // Build return URL for 3D Secure authentication redirect
+      const origin = request.headers.get("origin") || process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
+      const returnUrl = `${origin}/order-confirmation?order_id=${orderResult.id}`;
 
-      const paymentIntent = await createPaymentIntent({
-        amount: Math.round(validatedData.total_amount * 100), // Convert to cents
-        currency: validatedData.currency,
+      // Create a Stripe Customer first (required for off-session payments)
+      const customer = await createCustomer({
+        name: validatedData.customer_name,
+        email: validatedData.customer_email,
+        phone: validatedData.customer_phone,
+        metadata: {
+          order_id: orderResult.id,
+        },
+      });
+
+      // Store customer ID in order
+      await (supabase as any)
+        .from("orders")
+        .update({ stripe_customer_id: customer.id })
+        .eq("id", orderResult.id);
+
+      const setupIntent = await createSetupIntent({
         paymentMethodId: validatedData.payment_method_id,
         orderId: orderResult.id,
         returnUrl,
+        customerId: customer.id,
       });
 
-      // Get payment method details
-      const paymentDetails = getPaymentMethodDetails(paymentIntent);
+      // Get payment method details from Stripe
+      const paymentMethodId = typeof setupIntent.payment_method === 'string'
+        ? setupIntent.payment_method
+        : setupIntent.payment_method?.id;
+
+      let paymentDetails = {
+        brand: null as string | null,
+        last4: null as string | null,
+        expMonth: null as number | null,
+        expYear: null as number | null,
+      };
+
+      if (paymentMethodId) {
+        const pm = await stripe.paymentMethods.retrieve(paymentMethodId);
+        if (pm.card) {
+          paymentDetails = {
+            brand: pm.card.brand,
+            last4: pm.card.last4,
+            expMonth: pm.card.exp_month,
+            expYear: pm.card.exp_year,
+          };
+        }
+      }
 
       // Update order with payment method info
       await (supabase as any)
@@ -92,14 +126,15 @@ export async function POST(request: NextRequest) {
         })
         .eq("id", orderResult.id);
 
-      // Create payment record
+      // Create payment record with setup intent info (no payment intent yet)
       await supabase.from("payments").insert({
-        stripe_event_id: `temp_${Date.now()}`, // Temporary, will be updated by webhook
+        stripe_event_id: `setup_${setupIntent.id}`, // Use setup intent ID as event ID
         order_id: orderResult.id,
-        stripe_payment_intent_id: paymentIntent.id,
+        stripe_payment_intent_id: null, // Will be created after call confirmation
         amount: validatedData.total_amount,
         currency: validatedData.currency,
         status: "pending",
+        payment_method_id: paymentMethodId, // Store for later charging
         payment_method_details: paymentDetails,
       } as any);
 
@@ -109,13 +144,14 @@ export async function POST(request: NextRequest) {
           status: orderResult.status,
           payment_status: orderResult.payment_status,
         },
-        payment_intent: {
-          id: paymentIntent.id,
-          status: paymentIntent.status,
+        setup_intent: {
+          id: setupIntent.id,
+          status: setupIntent.status,
+          payment_method: paymentMethodId,
         },
       });
     } catch (stripeError: any) {
-      console.error("Error creating payment intent:", stripeError);
+      console.error("Error creating setup intent:", stripeError);
 
       // Update order status to failed
       await (supabase as any)
@@ -125,7 +161,7 @@ export async function POST(request: NextRequest) {
 
       return NextResponse.json(
         {
-          error: "Failed to create payment intent",
+          error: "Failed to create setup intent",
           details: stripeError.message,
         },
         { status: 500 }
