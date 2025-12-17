@@ -9,6 +9,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { headers } from 'next/headers';
 import Stripe from 'stripe';
 import { createServiceClient } from '@/lib/supabase/server';
+import {
+  initiateOrderConfirmationCall,
+  isWithinCallingHours,
+  getNextCallingTime,
+} from '@/lib/vapi/client';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: '2025-11-17.acacia' as any,
@@ -143,7 +148,7 @@ async function handleSetupIntentSucceeded(event: Stripe.Event, supabase: any) {
     .eq('id', orderId);
 
   // Trigger Vapi call
-  await triggerVapiCall(orderId);
+  await triggerVapiCall(orderId, supabase);
 }
 
 /**
@@ -211,7 +216,7 @@ async function handlePaymentAuthorized(event: Stripe.Event, supabase: any) {
     .eq('id', orderId);
 
   // Trigger Vapi call
-  await triggerVapiCall(orderId);
+  await triggerVapiCall(orderId, supabase);
 }
 
 async function handlePaymentSucceeded(event: Stripe.Event, supabase: any) {
@@ -262,31 +267,95 @@ async function handlePaymentCanceled(event: Stripe.Event, supabase: any) {
 
 /**
  * Trigger a Vapi call for order confirmation
+ * Directly calls Vapi API instead of internal HTTP request to avoid deployment protection issues
  */
-async function triggerVapiCall(orderId: string) {
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || process.env.VERCEL_URL
-    ? `https://${process.env.VERCEL_URL}`
-    : 'http://localhost:3000';
-
+async function triggerVapiCall(orderId: string, supabase: any) {
   console.log(`Triggering Vapi call for order ${orderId}`);
 
   try {
-    const response = await fetch(`${baseUrl}/api/vapi/initiate-call`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ order_id: orderId }),
-    });
+    // Fetch order details
+    const { data: orderData, error: orderError } = await supabase
+      .from('orders')
+      .select('*')
+      .eq('id', orderId)
+      .single();
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Failed to trigger Vapi call:', errorText);
-    } else {
-      const data = await response.json();
-      console.log(`Vapi call initiated: ${data.vapi_call_id}`);
+    if (orderError || !orderData) {
+      console.error('Order not found for Vapi call:', orderError);
+      return;
     }
-  } catch (error) {
-    console.error('Error triggering Vapi call:', error);
+
+    const order = orderData;
+
+    // Check calling hours
+    if (!isWithinCallingHours()) {
+      const nextCallTime = getNextCallingTime();
+
+      // Create call record scheduled for later
+      const { data: scheduledCall, error: scheduleError } = await supabase
+        .from('calls')
+        .insert({
+          order_id: orderId,
+          outcome: 'scheduled',
+          next_retry_at: nextCallTime.toISOString(),
+        })
+        .select()
+        .single();
+
+      if (scheduleError) {
+        console.error('Error scheduling call:', scheduleError);
+        return;
+      }
+
+      console.log(`Call scheduled for ${nextCallTime.toISOString()}`);
+      return;
+    }
+
+    // Create call record first
+    const { data: callRecord, error: callError } = await supabase
+      .from('calls')
+      .insert({
+        order_id: orderId,
+        started_at: new Date().toISOString(),
+        current_step: 'VAPI_INITIATED',
+      })
+      .select()
+      .single();
+
+    if (callError || !callRecord) {
+      console.error('Error creating call record:', callError);
+      return;
+    }
+
+    // Initiate Vapi call directly
+    const vapiCall = await initiateOrderConfirmationCall(
+      {
+        id: order.id,
+        customer_name: order.customer_name,
+        customer_phone: order.customer_phone,
+        items: order.items as Array<{
+          name: string;
+          quantity: number;
+          price: number;
+        }>,
+        total_amount: Number(order.total_amount),
+        delivery_address: order.delivery_address,
+        payment_method_brand: order.payment_method_brand,
+        payment_method_last4: order.payment_method_last4,
+      },
+      callRecord.id
+    );
+
+    // Update call record with Vapi call ID
+    await supabase
+      .from('calls')
+      .update({
+        vapi_call_id: vapiCall.id,
+      })
+      .eq('id', callRecord.id);
+
+    console.log(`Vapi call initiated: ${vapiCall.id} for order ${orderId}`);
+  } catch (error: any) {
+    console.error('Error triggering Vapi call:', error.message);
   }
 }
