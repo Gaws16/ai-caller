@@ -19,6 +19,7 @@ function CheckoutContent() {
   const [product, setProduct] = useState<Product | null>(null)
   const [paymentType, setPaymentType] = useState<'one_time' | 'subscription'>('one_time')
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly')
+  const [quantity, setQuantity] = useState(1)
   const [loading, setLoading] = useState(true)
   const [authenticated, setAuthenticated] = useState(false)
 
@@ -95,9 +96,10 @@ function CheckoutContent() {
     )
   }
 
-  const price = paymentType === 'one_time'
+  const unitPrice = paymentType === 'one_time'
     ? product.price
     : (billingCycle === 'monthly' ? product.monthlyPrice : product.yearlyPrice)
+  const totalPrice = unitPrice * quantity
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-zinc-50 via-blue-50/30 to-purple-50/30 dark:from-black dark:via-blue-950/10 dark:to-purple-950/10">
@@ -194,7 +196,7 @@ function CheckoutContent() {
             options={{
               mode: 'payment',
               currency: 'usd',
-              amount: Math.round(price * 100),
+              amount: Math.round(totalPrice * 100),
               paymentMethodCreation: 'manual',
               appearance: {
                 theme: 'stripe',
@@ -202,8 +204,10 @@ function CheckoutContent() {
             }}
           >
             <CheckoutForm
-              product={{ id: product.id, name: product.name, price }}
+              product={{ id: product.id, name: product.name, price: unitPrice }}
               paymentType={paymentType}
+              quantity={quantity}
+              onQuantityChange={setQuantity}
               onOrderCreated={handleOrderCreated}
             />
           </Elements>
@@ -212,6 +216,8 @@ function CheckoutContent() {
               product={product}
               paymentType={paymentType}
               billingCycle={billingCycle}
+              quantity={quantity}
+              onQuantityChange={setQuantity}
             />
           </div>
         </div>

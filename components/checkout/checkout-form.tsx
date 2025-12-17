@@ -23,10 +23,12 @@ interface CheckoutFormProps {
     price: number
   }
   paymentType: 'one_time' | 'subscription'
+  quantity: number
+  onQuantityChange: (quantity: number) => void
   onOrderCreated: (orderId: string) => void
 }
 
-export function CheckoutForm({ product, paymentType, onOrderCreated }: CheckoutFormProps) {
+export function CheckoutForm({ product, paymentType, quantity, onQuantityChange, onOrderCreated }: CheckoutFormProps) {
   const [formData, setFormData] = useState({
     name: '',
     phone: '',
@@ -81,11 +83,11 @@ export function CheckoutForm({ product, paymentType, onOrderCreated }: CheckoutF
           items: [
             {
               name: product.name,
-              quantity: 1,
+              quantity: quantity,
               price: product.price,
             },
           ],
-          total_amount: product.price,
+          total_amount: product.price * quantity,
           currency: 'usd',
           delivery_address: validated.address,
           delivery_instructions: validated.instructions,

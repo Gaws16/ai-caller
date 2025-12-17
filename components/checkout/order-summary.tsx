@@ -1,17 +1,20 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { type Product } from '@/lib/products'
-import { Check, Sparkles } from 'lucide-react'
+import { Check, Sparkles, Minus, Plus } from 'lucide-react'
 
 interface OrderSummaryProps {
   product: Product
   paymentType: 'one_time' | 'subscription'
   billingCycle: 'monthly' | 'yearly'
+  quantity: number
+  onQuantityChange?: (quantity: number) => void
 }
 
-export function OrderSummary({ product, paymentType, billingCycle }: OrderSummaryProps) {
-  const price = paymentType === 'one_time'
+export function OrderSummary({ product, paymentType, billingCycle, quantity, onQuantityChange }: OrderSummaryProps) {
+  const unitPrice = paymentType === 'one_time'
     ? product.price
     : (billingCycle === 'monthly' ? product.monthlyPrice : product.yearlyPrice)
+  const totalPrice = unitPrice * quantity
   const savings = billingCycle === 'yearly'
     ? Math.round((1 - product.yearlyPrice / (product.monthlyPrice * 12)) * 100)
     : 0
@@ -64,12 +67,52 @@ export function OrderSummary({ product, paymentType, billingCycle }: OrderSummar
           ))}
         </div>
 
+        {/* Quantity Selector - Only show for one-time purchases */}
+        {paymentType === 'one_time' && onQuantityChange && (
+          <div className="border-t pt-4">
+            <label className="text-sm font-semibold text-zinc-700 dark:text-zinc-300 mb-3 block">
+              Quantity
+            </label>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => onQuantityChange(Math.max(1, quantity - 1))}
+                disabled={quantity <= 1}
+                className="w-10 h-10 rounded-lg border-2 border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 flex items-center justify-center hover:bg-gradient-to-r hover:from-blue-50 hover:to-purple-50 dark:hover:from-blue-950/30 dark:hover:to-purple-950/30 hover:border-blue-400 dark:hover:border-blue-600 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white dark:disabled:hover:bg-zinc-900 transition-all duration-200 group"
+              >
+                <Minus className="w-4 h-4 text-zinc-600 dark:text-zinc-400 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors" />
+              </button>
+              <div className="flex-1 text-center">
+                <span className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+                  {quantity}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => onQuantityChange(quantity + 1)}
+                className="w-10 h-10 rounded-lg border-2 border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 flex items-center justify-center hover:bg-gradient-to-r hover:from-blue-50 hover:to-purple-50 dark:hover:from-blue-950/30 dark:hover:to-purple-950/30 hover:border-blue-400 dark:hover:border-blue-600 transition-all duration-200 group"
+              >
+                <Plus className="w-4 h-4 text-zinc-600 dark:text-zinc-400 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors" />
+              </button>
+            </div>
+            <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-2 text-center">
+              ${unitPrice.toFixed(2)} each
+            </p>
+          </div>
+        )}
+
         {/* Pricing */}
         <div className="border-t pt-4 space-y-2">
           <div className="flex justify-between text-sm">
-            <span>{paymentType === 'one_time' ? 'Product Price' : 'Subscription Price'}</span>
-            <span>${price.toFixed(2)}</span>
+            <span>{paymentType === 'one_time' ? 'Unit Price' : 'Subscription Price'}</span>
+            <span>${unitPrice.toFixed(2)}</span>
           </div>
+          {paymentType === 'one_time' && quantity > 1 && (
+            <div className="flex justify-between text-sm text-zinc-600 dark:text-zinc-400">
+              <span>Quantity</span>
+              <span>× {quantity}</span>
+            </div>
+          )}
           {paymentType === 'subscription' && billingCycle === 'yearly' && (
             <div className="flex justify-between text-sm text-green-600 dark:text-green-400">
               <span>Annual Savings</span>
@@ -87,7 +130,7 @@ export function OrderSummary({ product, paymentType, billingCycle }: OrderSummar
               Due Today
             </span>
             <span className="bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-              {paymentType === 'one_time' ? `$${price.toFixed(2)}` : '$0.00'}
+              {paymentType === 'one_time' ? `$${totalPrice.toFixed(2)}` : '$0.00'}
             </span>
           </div>
         </div>
@@ -100,7 +143,7 @@ export function OrderSummary({ product, paymentType, billingCycle }: OrderSummar
                 🎉 Free Trial Included
               </p>
               <p className="text-blue-700 dark:text-blue-300 text-xs leading-relaxed">
-                Start your 14-day free trial now. After the trial, you'll be charged ${price.toFixed(2)} {billingCycle === 'monthly' ? 'per month' : 'per year'}. Cancel anytime during the trial at no cost.
+                Start your 14-day free trial now. After the trial, you'll be charged ${unitPrice.toFixed(2)} {billingCycle === 'monthly' ? 'per month' : 'per year'}. Cancel anytime during the trial at no cost.
               </p>
             </>
           ) : (
