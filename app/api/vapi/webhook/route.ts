@@ -39,21 +39,40 @@ interface ToolCall {
   };
 }
 
+// Vapi webhook payload - structure varies by event type
 interface VapiWebhookPayload {
   message: {
     type: string;
     toolCallList?: ToolCall[];
+    call?: {
+      id: string;
+      status?: string;
+      metadata?: Record<string, string>;
+    };
     endedReason?: string;
     transcript?: string;
     summary?: string;
     status?: string;
   };
-  call: {
+  // Call info can be at root level or inside message
+  call?: {
     id: string;
     status: string;
     duration?: number;
     metadata?: Record<string, string>;
   };
+}
+
+/**
+ * Extract call ID from Vapi payload (handles different payload structures)
+ */
+function extractCallId(body: any): string | null {
+  // Try different possible locations for the call ID
+  return body?.call?.id
+    || body?.message?.call?.id
+    || body?.callId
+    || body?.message?.callId
+    || null;
 }
 
 // ============================================
@@ -62,23 +81,27 @@ interface VapiWebhookPayload {
 
 export async function POST(request: NextRequest) {
   try {
-    const body: VapiWebhookPayload = await request.json();
+    const body = await request.json();
     const messageType = body.message?.type;
+    const callId = extractCallId(body);
 
-    console.log('Vapi webhook received:', messageType, body.call?.id);
+    // Log full payload for debugging (remove in production)
+    console.log('Vapi webhook received:', messageType, 'callId:', callId);
+    console.log('Vapi payload structure:', JSON.stringify(body, null, 2));
 
     switch (messageType) {
       case 'tool-calls':
-        return handleToolCalls(body);
+        return handleToolCalls(body, callId);
 
       case 'end-of-call-report':
-        return handleEndOfCall(body);
+        return handleEndOfCall(body, callId);
 
       case 'status-update':
-        return handleStatusUpdate(body);
+        return handleStatusUpdate(body, callId);
 
       default:
         // Acknowledge other events
+        console.log('Unhandled Vapi event type:', messageType);
         return NextResponse.json({ received: true });
     }
   } catch (error: any) {
@@ -94,10 +117,15 @@ export async function POST(request: NextRequest) {
 // Tool Call Handler
 // ============================================
 
-async function handleToolCalls(body: VapiWebhookPayload): Promise<NextResponse> {
-  const toolCalls = body.message.toolCallList || [];
-  const vapiCallId = body.call.id;
+async function handleToolCalls(body: any, vapiCallId: string | null): Promise<NextResponse> {
+  const toolCalls = body.message?.toolCallList || [];
   const results: Array<{ toolCallId: string; result: string }> = [];
+
+  if (!vapiCallId) {
+    console.error('No call ID found in tool-calls webhook');
+    // Return empty results - Vapi will continue the conversation
+    return NextResponse.json({ results: [] });
+  }
 
   for (const toolCall of toolCalls) {
     const args = JSON.parse(toolCall.function.arguments || '{}');
@@ -141,9 +169,13 @@ async function handleToolCalls(body: VapiWebhookPayload): Promise<NextResponse> 
 // End of Call Handler
 // ============================================
 
-async function handleEndOfCall(body: VapiWebhookPayload): Promise<NextResponse> {
-  const vapiCallId = body.call.id;
-  const endedReason = body.message.endedReason;
+async function handleEndOfCall(body: any, vapiCallId: string | null): Promise<NextResponse> {
+  const endedReason = body.message?.endedReason;
+
+  if (!vapiCallId) {
+    console.error('No call ID found in end-of-call-report webhook');
+    return NextResponse.json({ received: true });
+  }
 
   console.log(`Call ended: ${vapiCallId}, reason: ${endedReason}`);
 
@@ -166,8 +198,8 @@ async function handleEndOfCall(body: VapiWebhookPayload): Promise<NextResponse> 
     .from('calls')
     .update({
       ended_at: new Date().toISOString(),
-      duration_seconds: body.call.duration,
-      transcript: body.message.transcript,
+      duration_seconds: body.call?.duration || body.message?.duration,
+      transcript: body.message?.transcript,
     })
     .eq('id', call.id);
 
@@ -192,9 +224,13 @@ async function handleEndOfCall(body: VapiWebhookPayload): Promise<NextResponse> 
 // Status Update Handler
 // ============================================
 
-async function handleStatusUpdate(body: VapiWebhookPayload): Promise<NextResponse> {
-  const vapiCallId = body.call.id;
-  const status = body.message.status;
+async function handleStatusUpdate(body: any, vapiCallId: string | null): Promise<NextResponse> {
+  const status = body.message?.status;
+
+  if (!vapiCallId) {
+    console.error('No call ID found in status-update webhook');
+    return NextResponse.json({ received: true });
+  }
 
   console.log(`Call status update: ${vapiCallId} -> ${status}`);
 
