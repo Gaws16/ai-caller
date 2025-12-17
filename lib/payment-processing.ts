@@ -7,6 +7,7 @@
 
 import { stripe } from './stripe';
 import { createServiceClient } from './supabase/server';
+import type { Database } from './supabase/types';
 
 /**
  * Capture payment after order confirmation
@@ -35,7 +36,7 @@ export async function capturePaymentAfterConfirmation(orderId: string): Promise<
     return { success: false, error: paymentError.message };
   }
 
-  const payment = payments?.[0];
+  const payment = payments?.[0] as Pick<Database['public']['Tables']['payments']['Row'], 'id' | 'payment_method_id' | 'stripe_payment_intent_id' | 'amount' | 'currency' | 'status'> | undefined;
 
   if (!payment) {
     console.error('Payment record not found for order:', orderId);
@@ -43,7 +44,7 @@ export async function capturePaymentAfterConfirmation(orderId: string): Promise<
   }
 
   // Get the current order total and customer ID (may have changed during call)
-  const { data: order, error: orderError } = await supabase
+  const { data: orderData, error: orderError } = await supabase
     .from('orders')
     .select('total_amount, currency, stripe_customer_id')
     .eq('id', orderId)
@@ -54,6 +55,7 @@ export async function capturePaymentAfterConfirmation(orderId: string): Promise<
     return { success: false, error: orderError.message };
   }
 
+  const order = orderData as Pick<Database['public']['Tables']['orders']['Row'], 'total_amount' | 'currency' | 'stripe_customer_id'> | null;
   if (!order) {
     console.error('Order not found:', orderId);
     return { success: false, error: 'Order not found' };
@@ -92,8 +94,8 @@ export async function capturePaymentAfterConfirmation(orderId: string): Promise<
       console.log('PaymentIntent created and charged:', paymentIntent.id, paymentIntent.status);
 
       // Update payment record with the new payment intent ID
-      await supabase
-        .from('payments')
+      await (supabase
+        .from('payments') as any)
         .update({
           stripe_payment_intent_id: paymentIntent.id,
           amount: order.total_amount,
@@ -103,8 +105,8 @@ export async function capturePaymentAfterConfirmation(orderId: string): Promise<
 
       // Update order status
       if (paymentIntent.status === 'succeeded') {
-        await supabase
-          .from('orders')
+        await (supabase
+          .from('orders') as any)
           .update({ payment_status: 'paid' })
           .eq('id', orderId);
       }
@@ -115,13 +117,13 @@ export async function capturePaymentAfterConfirmation(orderId: string): Promise<
       console.error('Error creating payment:', error);
 
       // Update payment status to failed
-      await supabase
-        .from('payments')
+      await (supabase
+        .from('payments') as any)
         .update({ status: 'failed' })
         .eq('id', payment.id);
 
-      await supabase
-        .from('orders')
+      await (supabase
+        .from('orders') as any)
         .update({ payment_status: 'failed' })
         .eq('id', orderId);
 
@@ -141,14 +143,14 @@ export async function capturePaymentAfterConfirmation(orderId: string): Promise<
       console.log('Payment captured successfully');
 
       // Update payment record
-      await supabase
-        .from('payments')
+      await (supabase
+        .from('payments') as any)
         .update({ status: 'succeeded' })
         .eq('id', payment.id);
 
       // Update order status
-      await supabase
-        .from('orders')
+      await (supabase
+        .from('orders') as any)
         .update({ payment_status: 'paid' })
         .eq('id', orderId);
 
@@ -185,7 +187,7 @@ export async function cancelPaymentAfterCallCancellation(orderId: string): Promi
     .order('created_at', { ascending: true })
     .limit(1);
 
-  const payment = payments?.[0];
+  const payment = payments?.[0] as Pick<Database['public']['Tables']['payments']['Row'], 'stripe_payment_intent_id' | 'payment_method_id'> | undefined;
 
   // If there's an existing PaymentIntent (legacy flow), cancel it
   if (payment?.stripe_payment_intent_id) {
@@ -202,8 +204,8 @@ export async function cancelPaymentAfterCallCancellation(orderId: string): Promi
   // Just update the database
 
   // Update order status
-  await supabase
-    .from('orders')
+  await (supabase
+    .from('orders') as any)
     .update({
       payment_status: 'cancelled',
       status: 'cancelled',
@@ -211,11 +213,11 @@ export async function cancelPaymentAfterCallCancellation(orderId: string): Promi
     .eq('id', orderId);
 
   // Update payment status
-  await supabase
-    .from('payments')
-    .update({ status: 'cancelled' })
-    .eq('order_id', orderId)
-    .eq('status', 'pending');
+      await (supabase
+        .from('payments') as any)
+        .update({ status: 'cancelled' })
+        .eq('order_id', orderId)
+        .eq('status', 'pending');
 
   console.log('Order cancelled successfully');
   return { success: true };

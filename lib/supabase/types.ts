@@ -28,6 +28,7 @@ export interface Database {
           payment_status: 'pending' | 'authorized' | 'paid' | 'failed' | 'cancelled' | 'refunded'
           payment_method_brand: string | null
           payment_method_last4: string | null
+          stripe_customer_id: string | null
           status: 'pending' | 'confirmed' | 'changed' | 'cancelled' | 'no-answer' | 'callback-required'
           created_at: string
           updated_at: string
@@ -134,11 +135,12 @@ export interface Database {
           twilio_call_sid: string | null
           twilio_recording_sid: string | null
           twilio_recording_url: string | null
+          vapi_call_id: string | null
           started_at: string | null
           ended_at: string | null
           duration_seconds: number | null
           current_step: string | null
-          outcome: 'confirmed' | 'changed' | 'cancelled' | 'no-answer' | 'callback-required' | 'failed' | null
+          outcome: 'confirmed' | 'changed' | 'cancelled' | 'no-answer' | 'callback-required' | 'failed' | 'scheduled' | null
           responses: Json
           transcript: string | null
           retry_count: number
@@ -152,11 +154,12 @@ export interface Database {
           twilio_call_sid?: string | null
           twilio_recording_sid?: string | null
           twilio_recording_url?: string | null
+          vapi_call_id?: string | null
           started_at?: string | null
           ended_at?: string | null
           duration_seconds?: number | null
           current_step?: string | null
-          outcome?: 'confirmed' | 'changed' | 'cancelled' | 'no-answer' | 'callback-required' | 'failed' | null
+          outcome?: 'confirmed' | 'changed' | 'cancelled' | 'no-answer' | 'callback-required' | 'failed' | 'scheduled' | null
           responses?: Json
           transcript?: string | null
           retry_count?: number
@@ -170,11 +173,12 @@ export interface Database {
           twilio_call_sid?: string | null
           twilio_recording_sid?: string | null
           twilio_recording_url?: string | null
+          vapi_call_id?: string | null
           started_at?: string | null
           ended_at?: string | null
           duration_seconds?: number | null
           current_step?: string | null
-          outcome?: 'confirmed' | 'changed' | 'cancelled' | 'no-answer' | 'callback-required' | 'failed' | null
+          outcome?: 'confirmed' | 'changed' | 'cancelled' | 'no-answer' | 'callback-required' | 'failed' | 'scheduled' | null
           responses?: Json
           transcript?: string | null
           retry_count?: number

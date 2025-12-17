@@ -9,9 +9,9 @@ import type {
   VapiCallResponse,
   VapiAssistantConfig,
   OrderContext,
-} from './types';
+} from "./types";
 
-const VAPI_API_URL = 'https://api.vapi.ai';
+const VAPI_API_URL = "https://api.vapi.ai";
 
 /**
  * Get the Vapi API key from environment
@@ -19,7 +19,7 @@ const VAPI_API_URL = 'https://api.vapi.ai';
 function getApiKey(): string {
   const apiKey = process.env.VAPI_API_KEY;
   if (!apiKey) {
-    throw new Error('VAPI_API_KEY environment variable is not set');
+    throw new Error("VAPI_API_KEY environment variable is not set");
   }
   return apiKey;
 }
@@ -33,22 +33,24 @@ export async function createVapiCall(
   const apiKey = getApiKey();
 
   const response = await fetch(`${VAPI_API_URL}/call/phone`, {
-    method: 'POST',
+    method: "POST",
     headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
     },
     body: JSON.stringify(params),
   });
 
   if (!response.ok) {
     const errorText = await response.text();
-    console.error('Vapi call creation failed:', {
+    console.error("Vapi call creation failed:", {
       status: response.status,
       statusText: response.statusText,
       error: errorText,
     });
-    throw new Error(`Vapi call creation failed: ${response.status} - ${errorText}`);
+    throw new Error(
+      `Vapi call creation failed: ${response.status} - ${errorText}`
+    );
   }
 
   const data = await response.json();
@@ -62,16 +64,18 @@ export async function getVapiCall(callId: string): Promise<VapiCallResponse> {
   const apiKey = getApiKey();
 
   const response = await fetch(`${VAPI_API_URL}/call/${callId}`, {
-    method: 'GET',
+    method: "GET",
     headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
     },
   });
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`Failed to get Vapi call: ${response.status} - ${errorText}`);
+    throw new Error(
+      `Failed to get Vapi call: ${response.status} - ${errorText}`
+    );
   }
 
   return response.json();
@@ -84,16 +88,18 @@ export async function endVapiCall(callId: string): Promise<void> {
   const apiKey = getApiKey();
 
   const response = await fetch(`${VAPI_API_URL}/call/${callId}/stop`, {
-    method: 'POST',
+    method: "POST",
     headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
     },
   });
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`Failed to end Vapi call: ${response.status} - ${errorText}`);
+    throw new Error(
+      `Failed to end Vapi call: ${response.status} - ${errorText}`
+    );
   }
 }
 
@@ -112,8 +118,11 @@ export function buildOrderContext(order: {
 }): OrderContext {
   // Format items list for the assistant
   const itemsList = order.items
-    .map(item => `${item.quantity}x ${item.name} ($${item.price.toFixed(2)} each)`)
-    .join(', ');
+    .map(
+      (item) =>
+        `${item.quantity}x ${item.name} ($${item.price.toFixed(2)} each)`
+    )
+    .join(", ");
 
   return {
     customer_name: order.customer_name,
@@ -122,8 +131,8 @@ export function buildOrderContext(order: {
     items_list: itemsList,
     total_amount: order.total_amount.toFixed(2),
     delivery_address: order.delivery_address,
-    payment_brand: order.payment_method_brand || 'card',
-    payment_last4: order.payment_method_last4 || '****',
+    payment_brand: order.payment_method_brand || "card",
+    payment_last4: order.payment_method_last4 || "****",
   };
 }
 
@@ -148,10 +157,10 @@ export async function initiateOrderConfirmationCall(
   const phoneNumberId = process.env.VAPI_PHONE_NUMBER_ID;
 
   if (!assistantId) {
-    throw new Error('VAPI_ASSISTANT_ID environment variable is not set');
+    throw new Error("VAPI_ASSISTANT_ID environment variable is not set");
   }
   if (!phoneNumberId) {
-    throw new Error('VAPI_PHONE_NUMBER_ID environment variable is not set');
+    throw new Error("VAPI_PHONE_NUMBER_ID environment variable is not set");
   }
 
   // Build order context for assistant
@@ -166,7 +175,7 @@ export async function initiateOrderConfirmationCall(
       name: order.customer_name,
     },
     assistantOverrides: {
-      variableValues: orderContext,
+      variableValues: orderContext as unknown as Record<string, string>,
     },
     metadata: {
       order_id: order.id,
@@ -190,12 +199,14 @@ export async function verifyVapiWebhookSignature(
 
   // If no secret configured, skip verification (not recommended for production)
   if (!secret) {
-    console.warn('VAPI_WEBHOOK_SECRET not set - skipping signature verification');
+    console.warn(
+      "VAPI_WEBHOOK_SECRET not set - skipping signature verification"
+    );
     return true;
   }
 
   if (!signature) {
-    console.error('No signature provided in webhook request');
+    console.error("No signature provided in webhook request");
     return false;
   }
 
@@ -206,21 +217,21 @@ export async function verifyVapiWebhookSignature(
     const messageData = encoder.encode(payload);
 
     const key = await crypto.subtle.importKey(
-      'raw',
+      "raw",
       keyData,
-      { name: 'HMAC', hash: 'SHA-256' },
+      { name: "HMAC", hash: "SHA-256" },
       false,
-      ['sign']
+      ["sign"]
     );
 
-    const signatureBuffer = await crypto.subtle.sign('HMAC', key, messageData);
+    const signatureBuffer = await crypto.subtle.sign("HMAC", key, messageData);
     const computedSignature = Array.from(new Uint8Array(signatureBuffer))
-      .map(b => b.toString(16).padStart(2, '0'))
-      .join('');
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
 
     return computedSignature === signature;
   } catch (error) {
-    console.error('Error verifying webhook signature:', error);
+    console.error("Error verifying webhook signature:", error);
     return false;
   }
 }
@@ -230,8 +241,8 @@ export async function verifyVapiWebhookSignature(
  * Default: 9 AM - 9 PM local time
  */
 export function isWithinCallingHours(): boolean {
-  const startHour = parseInt(process.env.CALL_HOURS_START || '9', 10);
-  const endHour = parseInt(process.env.CALL_HOURS_END || '21', 10);
+  const startHour = parseInt(process.env.CALL_HOURS_START || "9", 10);
+  const endHour = parseInt(process.env.CALL_HOURS_END || "21", 10);
 
   const now = new Date();
   const currentHour = now.getHours();
@@ -243,7 +254,7 @@ export function isWithinCallingHours(): boolean {
  * Calculate next available calling time
  */
 export function getNextCallingTime(): Date {
-  const startHour = parseInt(process.env.CALL_HOURS_START || '9', 10);
+  const startHour = parseInt(process.env.CALL_HOURS_START || "9", 10);
 
   const now = new Date();
   const next = new Date(now);

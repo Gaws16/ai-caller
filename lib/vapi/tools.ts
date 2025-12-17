@@ -5,7 +5,7 @@
  * Each tool updates the database and returns a message for the assistant.
  */
 
-import { createServiceClient } from '../supabase/server';
+import { createServiceClient } from "../supabase/server";
 import type {
   ConfirmOrderArgs,
   ChangeQuantityArgs,
@@ -14,7 +14,7 @@ import type {
   RequestCallbackArgs,
   ToolResponse,
   VapiTool,
-} from './types';
+} from "./types";
 
 // ============================================
 // Tool Definitions (for Vapi Assistant config)
@@ -22,92 +22,99 @@ import type {
 
 export const orderConfirmationTools: VapiTool[] = [
   {
-    type: 'function',
+    type: "function",
     function: {
-      name: 'confirm_order',
-      description: 'Mark the order as confirmed after the customer confirms all details. Call this when the customer has agreed to all order details and payment.',
+      name: "confirm_order",
+      description:
+        "Mark the order as confirmed after the customer confirms all details. Call this when the customer has agreed to all order details and payment.",
       parameters: {
-        type: 'object',
+        type: "object",
         properties: {
           delivery_time: {
-            type: 'string',
-            enum: ['morning', 'afternoon', 'evening', 'any'],
-            description: 'Customer\'s preferred delivery time window',
+            type: "string",
+            enum: ["morning", "afternoon", "evening", "any"],
+            description: "Customer's preferred delivery time window",
           },
           notes: {
-            type: 'string',
-            description: 'Any additional notes or special instructions from the conversation',
+            type: "string",
+            description:
+              "Any additional notes or special instructions from the conversation",
           },
         },
-        required: ['delivery_time'],
+        required: ["delivery_time"],
       },
     },
   },
   {
-    type: 'function',
+    type: "function",
     function: {
-      name: 'change_quantity',
-      description: 'Update the quantity of an item in the order. Use when customer wants to increase, decrease, or remove an item.',
+      name: "change_quantity",
+      description:
+        "Update the quantity of an item in the order. Use when customer wants to increase, decrease, or remove an item.",
       parameters: {
-        type: 'object',
+        type: "object",
         properties: {
           item_name: {
-            type: 'string',
-            description: 'Name or partial name of the item to change (will fuzzy match)',
+            type: "string",
+            description:
+              "Name or partial name of the item to change (will fuzzy match)",
           },
           new_quantity: {
-            type: 'string', // Using string to parse as number - Vapi sometimes sends strings
-            description: 'New quantity for the item. Use 0 to remove the item entirely.',
+            type: "string", // Using string to parse as number - Vapi sometimes sends strings
+            description:
+              "New quantity for the item. Use 0 to remove the item entirely.",
           },
         },
-        required: ['item_name', 'new_quantity'],
+        required: ["item_name", "new_quantity"],
       },
     },
   },
   {
-    type: 'function',
+    type: "function",
     function: {
-      name: 'change_address',
-      description: 'Update the delivery address for the order.',
+      name: "change_address",
+      description: "Update the delivery address for the order.",
       parameters: {
-        type: 'object',
+        type: "object",
         properties: {
           new_address: {
-            type: 'string',
-            description: 'The new delivery address provided by the customer',
+            type: "string",
+            description: "The new delivery address provided by the customer",
           },
         },
-        required: ['new_address'],
+        required: ["new_address"],
       },
     },
   },
   {
-    type: 'function',
+    type: "function",
     function: {
-      name: 'cancel_order',
-      description: 'Cancel the order completely. Only use when customer explicitly wants to cancel.',
+      name: "cancel_order",
+      description:
+        "Cancel the order completely. Only use when customer explicitly wants to cancel.",
       parameters: {
-        type: 'object',
+        type: "object",
         properties: {
           reason: {
-            type: 'string',
-            description: 'Reason for cancellation',
+            type: "string",
+            description: "Reason for cancellation",
           },
         },
       },
     },
   },
   {
-    type: 'function',
+    type: "function",
     function: {
-      name: 'request_callback',
-      description: 'Request a callback from human support. Use when customer has complex issues or requests human assistance.',
+      name: "request_callback",
+      description:
+        "Request a callback from human support. Use when customer has complex issues or requests human assistance.",
       parameters: {
-        type: 'object',
+        type: "object",
         properties: {
           reason: {
-            type: 'string',
-            description: 'Why the customer needs human support',
+            type: "string",
+            description: "Why the customer needs human support",
           },
         },
       },
@@ -125,16 +132,17 @@ export const orderConfirmationTools: VapiTool[] = [
 async function getOrderFromVapiCall(vapiCallId: string) {
   const supabase = await createServiceClient();
 
-  const { data: call, error } = await supabase
-    .from('calls')
-    .select('*, orders(*)')
-    .eq('vapi_call_id', vapiCallId)
+  const { data: callData, error } = await supabase
+    .from("calls")
+    .select("*, orders(*)")
+    .eq("vapi_call_id", vapiCallId)
     .single();
 
-  if (error || !call) {
+  if (error || !callData) {
     throw new Error(`Call not found for Vapi ID: ${vapiCallId}`);
   }
 
+  const call = callData as any;
   const order = Array.isArray(call.orders) ? call.orders[0] : call.orders;
   if (!order) {
     throw new Error(`Order not found for call: ${call.id}`);
@@ -155,32 +163,32 @@ export async function handleConfirmOrder(
     const supabase = await createServiceClient();
 
     // Update order with delivery preference
-    await supabase
-      .from('orders')
+    await (supabase.from("orders") as any)
       .update({
         delivery_time_preference: args.delivery_time,
         delivery_instructions: args.notes
-          ? `${order.delivery_instructions || ''}\n[Call Note]: ${args.notes}`.trim()
+          ? `${order.delivery_instructions || ""}\n[Call Note]: ${
+              args.notes
+            }`.trim()
           : order.delivery_instructions,
       })
-      .eq('id', order.id);
+      .eq("id", order.id);
 
     // Update call outcome
-    await supabase
-      .from('calls')
+    await (supabase.from("calls") as any)
       .update({
-        outcome: 'confirmed',
+        outcome: "confirmed",
         responses: {
           ...(call.responses || {}),
           CONFIRMATION: {
-            intent: 'CONFIRM',
+            intent: "CONFIRM",
             delivery_time: args.delivery_time,
             notes: args.notes,
             timestamp: new Date().toISOString(),
           },
         },
       })
-      .eq('id', call.id);
+      .eq("id", call.id);
 
     return {
       success: true,
@@ -188,10 +196,11 @@ export async function handleConfirmOrder(
       data: { delivery_time: args.delivery_time },
     };
   } catch (error: any) {
-    console.error('Error in handleConfirmOrder:', error);
+    console.error("Error in handleConfirmOrder:", error);
     return {
       success: false,
-      message: 'I had trouble confirming the order. Please try again or request a callback.',
+      message:
+        "I had trouble confirming the order. Please try again or request a callback.",
     };
   }
 }
@@ -208,9 +217,10 @@ export async function handleChangeQuantity(
     const supabase = await createServiceClient();
 
     // Parse quantity (Vapi might send string or number)
-    const newQuantity = typeof args.new_quantity === 'string'
-      ? parseInt(args.new_quantity, 10)
-      : args.new_quantity;
+    const newQuantity =
+      typeof args.new_quantity === "string"
+        ? parseInt(args.new_quantity, 10)
+        : args.new_quantity;
 
     if (isNaN(newQuantity) || newQuantity < 0) {
       return {
@@ -222,13 +232,14 @@ export async function handleChangeQuantity(
     // Find the item (fuzzy match)
     const items = [...(order.items as any[])];
     const searchTerm = args.item_name.toLowerCase();
-    const itemIndex = items.findIndex(item =>
-      item.name.toLowerCase().includes(searchTerm) ||
-      searchTerm.includes(item.name.toLowerCase())
+    const itemIndex = items.findIndex(
+      (item) =>
+        item.name.toLowerCase().includes(searchTerm) ||
+        searchTerm.includes(item.name.toLowerCase())
     );
 
     if (itemIndex === -1) {
-      const availableItems = items.map(i => i.name).join(', ');
+      const availableItems = items.map((i) => i.name).join(", ");
       return {
         success: false,
         message: `I couldn't find "${args.item_name}" in your order. Your order contains: ${availableItems}`,
@@ -249,37 +260,35 @@ export async function handleChangeQuantity(
     if (items.length === 0) {
       return {
         success: false,
-        message: 'You cannot remove all items from the order. Would you like to cancel the order instead?',
+        message:
+          "You cannot remove all items from the order. Would you like to cancel the order instead?",
       };
     }
 
     // Recalculate total
-    const newTotal = items.reduce((sum, i) => sum + (i.price * i.quantity), 0);
+    const newTotal = items.reduce((sum, i) => sum + i.price * i.quantity, 0);
 
     // Update database
-    await supabase
-      .from('orders')
+    await (supabase.from("orders") as any)
       .update({
         items,
         total_amount: newTotal,
       })
-      .eq('id', order.id);
+      .eq("id", order.id);
 
     // Update payment record amount
-    await supabase
-      .from('payments')
+    await (supabase.from("payments") as any)
       .update({ amount: newTotal })
-      .eq('order_id', order.id)
-      .eq('status', 'pending');
+      .eq("order_id", order.id)
+      .eq("status", "pending");
 
     // Update call responses
-    await supabase
-      .from('calls')
+    await (supabase.from("calls") as any)
       .update({
         responses: {
           ...(call.responses || {}),
           QUANTITY_CHANGE: {
-            intent: 'CHANGE',
+            intent: "CHANGE",
             item_name: item.name,
             old_quantity: oldQuantity,
             new_quantity: newQuantity,
@@ -287,16 +296,26 @@ export async function handleChangeQuantity(
           },
         },
       })
-      .eq('id', call.id);
+      .eq("id", call.id);
 
     // Build response message
     let message: string;
     if (newQuantity === 0) {
-      message = `I've removed ${item.name} from your order. Your new total is $${newTotal.toFixed(2)}.`;
+      message = `I've removed ${
+        item.name
+      } from your order. Your new total is $${newTotal.toFixed(2)}.`;
     } else if (newQuantity > oldQuantity) {
-      message = `I've increased ${item.name} from ${oldQuantity} to ${newQuantity}. Your new total is $${newTotal.toFixed(2)}.`;
+      message = `I've increased ${
+        item.name
+      } from ${oldQuantity} to ${newQuantity}. Your new total is $${newTotal.toFixed(
+        2
+      )}.`;
     } else {
-      message = `I've decreased ${item.name} from ${oldQuantity} to ${newQuantity}. Your new total is $${newTotal.toFixed(2)}.`;
+      message = `I've decreased ${
+        item.name
+      } from ${oldQuantity} to ${newQuantity}. Your new total is $${newTotal.toFixed(
+        2
+      )}.`;
     }
 
     return {
@@ -310,10 +329,10 @@ export async function handleChangeQuantity(
       },
     };
   } catch (error: any) {
-    console.error('Error in handleChangeQuantity:', error);
+    console.error("Error in handleChangeQuantity:", error);
     return {
       success: false,
-      message: 'I had trouble updating the quantity. Please try again.',
+      message: "I had trouble updating the quantity. Please try again.",
     };
   }
 }
@@ -332,26 +351,24 @@ export async function handleChangeAddress(
     const oldAddress = order.delivery_address;
 
     // Update address
-    await supabase
-      .from('orders')
+    await (supabase.from("orders") as any)
       .update({ delivery_address: args.new_address })
-      .eq('id', order.id);
+      .eq("id", order.id);
 
     // Update call responses
-    await supabase
-      .from('calls')
+    await (supabase.from("calls") as any)
       .update({
         responses: {
           ...(call.responses || {}),
           ADDRESS_CHANGE: {
-            intent: 'CHANGE',
+            intent: "CHANGE",
             old_address: oldAddress,
             new_address: args.new_address,
             timestamp: new Date().toISOString(),
           },
         },
       })
-      .eq('id', call.id);
+      .eq("id", call.id);
 
     return {
       success: true,
@@ -359,10 +376,10 @@ export async function handleChangeAddress(
       data: { new_address: args.new_address },
     };
   } catch (error: any) {
-    console.error('Error in handleChangeAddress:', error);
+    console.error("Error in handleChangeAddress:", error);
     return {
       success: false,
-      message: 'I had trouble updating the address. Please try again.',
+      message: "I had trouble updating the address. Please try again.",
     };
   }
 }
@@ -379,34 +396,35 @@ export async function handleCancelOrder(
     const supabase = await createServiceClient();
 
     // Update call outcome
-    await supabase
-      .from('calls')
+    await (supabase.from("calls") as any)
       .update({
-        outcome: 'cancelled',
+        outcome: "cancelled",
         responses: {
           ...(call.responses || {}),
           CANCELLATION: {
-            intent: 'CANCEL',
+            intent: "CANCEL",
             reason: args.reason,
             timestamp: new Date().toISOString(),
           },
         },
       })
-      .eq('id', call.id);
+      .eq("id", call.id);
 
     // Note: Payment cancellation will happen in the end-of-call handler
     // We just mark the intent here
 
     return {
       success: true,
-      message: 'I understand you want to cancel the order. Your order will be cancelled and you won\'t be charged. Is there anything else I can help with?',
+      message:
+        "I understand you want to cancel the order. Your order will be cancelled and you won't be charged. Is there anything else I can help with?",
       data: { cancelled: true, reason: args.reason },
     };
   } catch (error: any) {
-    console.error('Error in handleCancelOrder:', error);
+    console.error("Error in handleCancelOrder:", error);
     return {
       success: false,
-      message: 'I had trouble processing the cancellation. Please hold while I connect you to support.',
+      message:
+        "I had trouble processing the cancellation. Please hold while I connect you to support.",
     };
   }
 }
@@ -423,33 +441,34 @@ export async function handleRequestCallback(
     const supabase = await createServiceClient();
 
     // Update call with callback request
-    await supabase
-      .from('calls')
+    await (supabase.from("calls") as any)
       .update({
-        outcome: 'callback_requested',
+        outcome: "callback_requested",
         responses: {
           ...(call.responses || {}),
           CALLBACK_REQUEST: {
-            intent: 'CALLBACK',
+            intent: "CALLBACK",
             reason: args.reason,
             timestamp: new Date().toISOString(),
           },
         },
       })
-      .eq('id', call.id);
+      .eq("id", call.id);
 
     // TODO: Could trigger notification to admin here
 
     return {
       success: true,
-      message: 'I\'ve noted your request for a callback. A team member will contact you shortly. Thank you for your patience.',
+      message:
+        "I've noted your request for a callback. A team member will contact you shortly. Thank you for your patience.",
       data: { callback_requested: true, reason: args.reason },
     };
   } catch (error: any) {
-    console.error('Error in handleRequestCallback:', error);
+    console.error("Error in handleRequestCallback:", error);
     return {
       success: false,
-      message: 'I had trouble processing your callback request. Please try calling our support line directly.',
+      message:
+        "I had trouble processing your callback request. Please try calling our support line directly.",
     };
   }
 }
@@ -463,15 +482,15 @@ export async function handleToolCall(
   args: Record<string, any>
 ): Promise<ToolResponse> {
   switch (toolName) {
-    case 'confirm_order':
+    case "confirm_order":
       return handleConfirmOrder(vapiCallId, args as ConfirmOrderArgs);
-    case 'change_quantity':
+    case "change_quantity":
       return handleChangeQuantity(vapiCallId, args as ChangeQuantityArgs);
-    case 'change_address':
+    case "change_address":
       return handleChangeAddress(vapiCallId, args as ChangeAddressArgs);
-    case 'cancel_order':
+    case "cancel_order":
       return handleCancelOrder(vapiCallId, args as CancelOrderArgs);
-    case 'request_callback':
+    case "request_callback":
       return handleRequestCallback(vapiCallId, args as RequestCallbackArgs);
     default:
       return {
