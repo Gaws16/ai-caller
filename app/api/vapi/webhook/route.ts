@@ -85,9 +85,7 @@ export async function POST(request: NextRequest) {
     const messageType = body.message?.type;
     const callId = extractCallId(body);
 
-    // Log full payload for debugging (remove in production)
     console.log('Vapi webhook received:', messageType, 'callId:', callId);
-    console.log('Vapi payload structure:', JSON.stringify(body, null, 2));
 
     switch (messageType) {
       case 'tool-calls':
@@ -128,7 +126,14 @@ async function handleToolCalls(body: any, vapiCallId: string | null): Promise<Ne
   }
 
   for (const toolCall of toolCalls) {
-    const args = JSON.parse(toolCall.function.arguments || '{}');
+    // Vapi sends arguments as object (not JSON string) in toolCallList
+    let args: Record<string, any>;
+    if (typeof toolCall.function.arguments === 'string') {
+      args = JSON.parse(toolCall.function.arguments || '{}');
+    } else {
+      args = toolCall.function.arguments || {};
+    }
+
     let result: { success: boolean; message: string; data?: any };
 
     try {
