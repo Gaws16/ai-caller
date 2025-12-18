@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
+import { LanguageSwitcher } from '@/components/language-switcher'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -58,6 +59,7 @@ export function Header() {
             </span>
           </Link>
           <nav className="flex items-center gap-4">
+            <LanguageSwitcher />
             {user ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>

@@ -1,0 +1,48 @@
+{
+  "common": {
+    "name": "Name",
+    "phone": "Phone Number",
+    "email": "Email",
+    "address": "Delivery Address",
+    "instructions": "Delivery Instructions (Optional)",
+    "submit": "Submit",
+    "loading": "Loading...",
+    "error": "Error",
+    "required": "Required",
+    "optional": "Optional"
+  },
+  "header": {
+    "title": "AI Caller",
+    "login": "Login",
+    "signup": "Sign Up"
+  },
+  "home": {
+    "title": "Supercharge Your Productivity",
+    "subtitle": "Access premium tools and apps that transform how you work, create, and grow. Start your free trial today.",
+    "freeTrial": "14-day free trial",
+    "cancelAnytime": "Cancel anytime",
+    "noCreditCard": "No credit card required",
+    "products": "Premium Apps & Tools",
+    "productsSubtitle": "Choose from our curated collection of professional-grade software",
+    "cta": "Ready to Transform Your Workflow?",
+    "ctaSubtitle": "Join thousands of professionals who trust our premium apps",
+    "startTrial": "Start Your Free Trial"
+  },
+  "checkout": {
+    "orderDetails": "Order Details",
+    "subscriptionDetails": "Subscription Details",
+    "paymentInfo": "Payment Information",
+    "namePlaceholder": "John Doe",
+    "phonePlaceholder": "+1234567890",
+    "emailPlaceholder": "john@example.com",
+    "addressPlaceholder": "123 Main St, City, State 12345",
+    "instructionsPlaceholder": "Leave at front door, etc."
+  },
+  "errors": {
+    "nameRequired": "Name is required",
+    "phoneInvalid": "Invalid phone number",
+    "emailInvalid": "Invalid email address",
+    "addressRequired": "Address is required"
+  }
+}
+

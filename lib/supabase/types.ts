@@ -28,6 +28,7 @@ export interface Database {
           payment_status: 'pending' | 'authorized' | 'paid' | 'failed' | 'cancelled' | 'refunded'
           payment_method_brand: string | null
           payment_method_last4: string | null
+          language: 'en' | 'bg'
           status: 'pending' | 'confirmed' | 'changed' | 'cancelled' | 'no-answer' | 'callback-required'
           created_at: string
           updated_at: string
@@ -48,6 +49,7 @@ export interface Database {
           payment_status?: 'pending' | 'authorized' | 'paid' | 'failed' | 'cancelled' | 'refunded'
           payment_method_brand?: string | null
           payment_method_last4?: string | null
+          language?: 'en' | 'bg'
           status?: 'pending' | 'confirmed' | 'changed' | 'cancelled' | 'no-answer' | 'callback-required'
           created_at?: string
           updated_at?: string
@@ -68,6 +70,7 @@ export interface Database {
           payment_status?: 'pending' | 'authorized' | 'paid' | 'failed' | 'cancelled' | 'refunded'
           payment_method_brand?: string | null
           payment_method_last4?: string | null
+          language?: 'en' | 'bg'
           status?: 'pending' | 'confirmed' | 'changed' | 'cancelled' | 'no-answer' | 'callback-required'
           created_at?: string
           updated_at?: string
