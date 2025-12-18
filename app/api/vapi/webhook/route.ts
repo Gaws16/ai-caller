@@ -251,6 +251,30 @@ async function handleStatusUpdate(body: any, vapiCallId: string | null): Promise
 }
 
 // ============================================
+// Vapi API Helper
+// ============================================
+
+async function endVapiCall(vapiCallId: string): Promise<void> {
+  try {
+    const response = await fetch(`https://api.vapi.ai/call/${vapiCallId}/end`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.VAPI_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      console.error('Failed to end Vapi call:', await response.text());
+    } else {
+      console.log(`Vapi call ${vapiCallId} ended programmatically`);
+    }
+  } catch (error) {
+    console.error('Error ending Vapi call:', error);
+  }
+}
+
+// ============================================
 // Tool Implementations (Inline for Edge Runtime)
 // ============================================
 
@@ -274,7 +298,10 @@ async function handleConfirmOrder(vapiCallId: string, args: any) {
 
   await supabase
     .from('orders')
-    .update({ delivery_time_preference: args.delivery_time })
+    .update({
+      delivery_time_preference: args.delivery_time,
+      status: 'confirmed',
+    })
     .eq('id', order.id);
 
   await supabase
@@ -288,9 +315,13 @@ async function handleConfirmOrder(vapiCallId: string, args: any) {
     })
     .eq('id', call.id);
 
+  // Schedule call to end (don't await - let it happen after response)
+  endVapiCall(vapiCallId).catch(console.error);
+
   return {
     success: true,
-    message: `Order confirmed! Delivery set for ${args.delivery_time}. Thank you!`,
+    message: `Order confirmed! Delivery set for ${args.delivery_time}. Thank you and goodbye!`,
+    endCall: true, // Signal to Vapi to end the call
   };
 }
 
@@ -386,7 +417,13 @@ async function handleChangeAddress(vapiCallId: string, args: any) {
 }
 
 async function handleCancelOrder(vapiCallId: string, args: any) {
-  const { call } = await getCallAndOrder(vapiCallId);
+  const { call, order } = await getCallAndOrder(vapiCallId);
+
+  // Update order status
+  await supabase
+    .from('orders')
+    .update({ status: 'cancelled' })
+    .eq('id', order.id);
 
   await supabase
     .from('calls')
@@ -399,9 +436,13 @@ async function handleCancelOrder(vapiCallId: string, args: any) {
     })
     .eq('id', call.id);
 
+  // Schedule call to end (don't await - let it happen after response)
+  endVapiCall(vapiCallId).catch(console.error);
+
   return {
     success: true,
-    message: 'Order will be cancelled. You won\'t be charged.',
+    message: 'Order has been cancelled. You won\'t be charged. Goodbye!',
+    endCall: true, // Signal to Vapi to end the call
   };
 }
 
