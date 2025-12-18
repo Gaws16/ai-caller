@@ -123,6 +123,27 @@ async function handleToolCalls(body: any, vapiCallId: string | null): Promise<Ne
     return NextResponse.json({ results: [] });
   }
 
+  // Save transcript from artifact.messages (updated on every tool call)
+  if (body.message?.artifact?.messages) {
+    const transcript = body.message.artifact.messages
+      .filter((msg: any) => msg.role === 'bot' || msg.role === 'user' || msg.role === 'assistant')
+      .map((msg: any) => {
+        const role = msg.role === 'bot' || msg.role === 'assistant' ? 'Assistant' : 'Customer';
+        const content = msg.message || msg.content || '';
+        return content ? `${role}: ${content}` : null;
+      })
+      .filter(Boolean)
+      .join('\n');
+
+    if (transcript) {
+      await supabase
+        .from('calls')
+        .update({ transcript })
+        .eq('vapi_call_id', vapiCallId);
+      console.log(`Transcript updated (${transcript.length} chars)`);
+    }
+  }
+
   for (const toolCall of toolCalls) {
     // Vapi sends arguments as object (not JSON string) in toolCallList
     let args: Record<string, any>;
