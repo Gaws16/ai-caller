@@ -315,6 +315,10 @@ async function handleConfirmOrder(vapiCallId: string, args: any) {
     })
     .eq('id', call.id);
 
+  // Capture payment immediately when order is confirmed (don't wait for call to end)
+  console.log(`Capturing payment for confirmed order: ${order.id}`);
+  await capturePayment(order.id);
+
   // Schedule call to end (don't await - let it happen after response)
   endVapiCall(vapiCallId).catch(console.error);
 
@@ -435,6 +439,10 @@ async function handleCancelOrder(vapiCallId: string, args: any) {
       },
     })
     .eq('id', call.id);
+
+  // Cancel payment immediately
+  console.log(`Cancelling payment for order: ${order.id}`);
+  await cancelPayment(order.id);
 
   // Schedule call to end (don't await - let it happen after response)
   endVapiCall(vapiCallId).catch(console.error);
