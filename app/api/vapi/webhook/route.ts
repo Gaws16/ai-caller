@@ -196,28 +196,45 @@ async function handleEndOfCall(body: any, vapiCallId: string | null): Promise<Ne
 
   const order = Array.isArray(call.orders) ? call.orders[0] : call.orders;
 
+  // Extract transcript - try multiple locations
+  let transcript = body.message?.transcript;
+
+  // If no direct transcript, build from artifact messages
+  if (!transcript && body.message?.artifact?.messages) {
+    transcript = body.message.artifact.messages
+      .filter((msg: any) => msg.role === 'bot' || msg.role === 'user' || msg.role === 'assistant')
+      .map((msg: any) => {
+        const role = msg.role === 'bot' || msg.role === 'assistant' ? 'Assistant' : 'Customer';
+        return `${role}: ${msg.message || msg.content || ''}`;
+      })
+      .filter((line: string) => line.trim() !== 'Assistant:' && line.trim() !== 'Customer:')
+      .join('\n');
+  }
+
+  // Also try summary if available
+  const summary = body.message?.summary;
+
+  console.log(`Transcript length: ${transcript?.length || 0}, Summary: ${summary ? 'yes' : 'no'}`);
+
   // Update call record with end data
   await supabase
     .from('calls')
     .update({
       ended_at: new Date().toISOString(),
       duration_seconds: body.call?.duration || body.message?.duration,
-      transcript: body.message?.transcript,
+      transcript: transcript || null,
     })
     .eq('id', call.id);
 
   // Determine final outcome and process payment
   const outcome = call.outcome || 'no-answer';
 
-  if (outcome === 'confirmed' || outcome === 'changed') {
-    // Capture payment
-    await capturePayment(order.id);
-  } else if (outcome === 'cancelled') {
-    // Cancel payment
-    await cancelPayment(order.id);
-  } else if (endedReason === 'customer-did-not-answer' || endedReason === 'customer-busy') {
-    // Handle no-answer - schedule retry
-    await handleNoAnswer(call.id);
+  // Only process payment if not already processed (we now capture on confirmation)
+  if (!call.outcome) {
+    if (endedReason === 'customer-did-not-answer' || endedReason === 'customer-busy') {
+      // Handle no-answer - schedule retry
+      await handleNoAnswer(call.id);
+    }
   }
 
   return NextResponse.json({ received: true });
