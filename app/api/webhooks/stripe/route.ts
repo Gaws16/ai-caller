@@ -287,16 +287,17 @@ async function triggerVapiCall(orderId: string, supabase: any) {
 
     const order = orderData;
 
-    // Check calling hours
-    if (!isWithinCallingHours()) {
+    // Check calling hours (disabled for testing - set CALL_HOURS_START=0 and CALL_HOURS_END=24 to enable 24/7)
+    const skipCallingHoursCheck = process.env.SKIP_CALLING_HOURS_CHECK === 'true';
+    if (!skipCallingHoursCheck && !isWithinCallingHours()) {
       const nextCallTime = getNextCallingTime();
 
-      // Create call record scheduled for later
+      // Create call record scheduled for later (outcome stays null until call happens)
       const { data: scheduledCall, error: scheduleError } = await supabase
         .from('calls')
         .insert({
           order_id: orderId,
-          outcome: 'scheduled',
+          current_step: 'SCHEDULED',
           next_retry_at: nextCallTime.toISOString(),
         })
         .select()
