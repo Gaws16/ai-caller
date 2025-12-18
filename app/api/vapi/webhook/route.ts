@@ -22,9 +22,7 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2025-11-17.acacia' as any,
-});
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
 // ============================================
 // Types
