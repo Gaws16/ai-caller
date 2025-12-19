@@ -235,7 +235,14 @@ async function handleEndOfCall(body: any, vapiCallId: string | null): Promise<Ne
   // Also try summary if available
   const summary = body.message?.summary;
 
-  console.log(`Transcript length: ${transcript?.length || 0}, Summary: ${summary ? 'yes' : 'no'}`);
+  // Extract recording URL - Vapi provides this in end-of-call-report
+  const recordingUrl = body.message?.recordingUrl
+    || body.message?.recording?.url
+    || body.message?.stereoRecordingUrl
+    || body.call?.recordingUrl
+    || null;
+
+  console.log(`Transcript length: ${transcript?.length || 0}, Summary: ${summary ? 'yes' : 'no'}, Recording: ${recordingUrl ? 'yes' : 'no'}`);
 
   // Update call record with end data
   await supabase
@@ -244,6 +251,7 @@ async function handleEndOfCall(body: any, vapiCallId: string | null): Promise<Ne
       ended_at: new Date().toISOString(),
       duration_seconds: body.call?.duration || body.message?.duration,
       transcript: transcript || null,
+      recording_url: recordingUrl,
     })
     .eq('id', call.id);
 

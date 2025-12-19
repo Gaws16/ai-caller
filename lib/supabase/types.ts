@@ -136,11 +136,12 @@ export interface Database {
           twilio_recording_sid: string | null
           twilio_recording_url: string | null
           vapi_call_id: string | null
+          recording_url: string | null
           started_at: string | null
           ended_at: string | null
           duration_seconds: number | null
           current_step: string | null
-          outcome: 'confirmed' | 'changed' | 'cancelled' | 'no-answer' | 'callback-required' | 'failed' | 'scheduled' | null
+          outcome: 'confirmed' | 'changed' | 'cancelled' | 'no-answer' | 'callback-required' | 'failed' | null
           responses: Json
           transcript: string | null
           retry_count: number
@@ -155,11 +156,12 @@ export interface Database {
           twilio_recording_sid?: string | null
           twilio_recording_url?: string | null
           vapi_call_id?: string | null
+          recording_url?: string | null
           started_at?: string | null
           ended_at?: string | null
           duration_seconds?: number | null
           current_step?: string | null
-          outcome?: 'confirmed' | 'changed' | 'cancelled' | 'no-answer' | 'callback-required' | 'failed' | 'scheduled' | null
+          outcome?: 'confirmed' | 'changed' | 'cancelled' | 'no-answer' | 'callback-required' | 'failed' | null
           responses?: Json
           transcript?: string | null
           retry_count?: number
@@ -174,11 +176,12 @@ export interface Database {
           twilio_recording_sid?: string | null
           twilio_recording_url?: string | null
           vapi_call_id?: string | null
+          recording_url?: string | null
           started_at?: string | null
           ended_at?: string | null
           duration_seconds?: number | null
           current_step?: string | null
-          outcome?: 'confirmed' | 'changed' | 'cancelled' | 'no-answer' | 'callback-required' | 'failed' | 'scheduled' | null
+          outcome?: 'confirmed' | 'changed' | 'cancelled' | 'no-answer' | 'callback-required' | 'failed' | null
           responses?: Json
           transcript?: string | null
           retry_count?: number
