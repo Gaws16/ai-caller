@@ -116,7 +116,7 @@ export default async function DashboardPage() {
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
                         <Link
-                          href={`/orders/${orderData.id}`}
+                          href={`/admin/orders/${orderData.id}`}
                           className="font-medium hover:underline"
                         >
                           Order {orderData.id.substring(0, 8)}
@@ -143,7 +143,7 @@ export default async function DashboardPage() {
                         </p>
                       )}
                     </div>
-                    <Link href={`/orders/${orderData.id}`}>
+                    <Link href={`/admin/orders/${orderData.id}`}>
                       <Button variant="outline" size="sm">
                         View
                       </Button>

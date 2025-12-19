@@ -14,13 +14,14 @@ type Payment = Database['public']['Tables']['payments']['Row']
 export default async function OrderDetailPage({
   params,
 }: {
-  params: { id: string }
+  params: Promise<{ id: string }>
 }) {
+  const { id } = await params
   const supabase = await createClient()
   const { data: order, error } = await supabase
     .from('orders')
     .select('*, calls(*), payments(*)')
-    .eq('id', params.id)
+    .eq('id', id)
     .single()
 
   if (error || !order) {
