@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { AudioPlayer } from './audio-player'
 import { Loader2 } from 'lucide-react'
 
@@ -22,9 +22,16 @@ export function CallRecording({
   const [recordingUrl, setRecordingUrl] = useState<string | null>(initialRecordingUrl || null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [hasTriedFetch, setHasTriedFetch] = useState(false)
+  const hasTriedFetchRef = useRef(false)
+  const isFetchingRef = useRef(false)
 
   const fetchRecording = useCallback(async () => {
+    // Prevent multiple simultaneous fetches
+    if (isFetchingRef.current) {
+      return
+    }
+
+    isFetchingRef.current = true
     setIsLoading(true)
     setError(null)
 
@@ -47,17 +54,27 @@ export function CallRecording({
       setError(err.message || 'Failed to load recording')
     } finally {
       setIsLoading(false)
+      isFetchingRef.current = false
     }
   }, [callId])
 
-  // Use useEffect to handle the fetch when shouldFetch becomes true
-  // This ensures we only fetch when the dialog opens
+  // Use useEffect to handle the fetch when component mounts
+  // This ensures we only fetch when the dialog opens and component is rendered
+  // Add a small delay to ensure dialog is fully mounted
   useEffect(() => {
-    if (shouldFetch && !hasTriedFetch && !recordingUrl && !twilioRecordingUrl && vapiCallId) {
-      setHasTriedFetch(true)
-      fetchRecording()
+    if (shouldFetch && !hasTriedFetchRef.current && !recordingUrl && !twilioRecordingUrl && vapiCallId) {
+      hasTriedFetchRef.current = true
+      // Small delay to ensure dialog is fully mounted before fetching
+      const timeoutId = setTimeout(() => {
+        fetchRecording().catch((err) => {
+          // Silently handle errors to prevent unhandled promise rejections
+          console.error('Fetch error:', err)
+        })
+      }, 150)
+      
+      return () => clearTimeout(timeoutId)
     }
-  }, [shouldFetch, hasTriedFetch, recordingUrl, twilioRecordingUrl, vapiCallId, fetchRecording])
+  }, [shouldFetch, recordingUrl, twilioRecordingUrl, vapiCallId, fetchRecording])
 
   // Determine the final recording URL to use
   const finalRecordingUrl = recordingUrl || (twilioRecordingUrl ? `${twilioRecordingUrl}.mp3` : null)
@@ -77,7 +94,13 @@ export function CallRecording({
         <p>{error}</p>
         {vapiCallId && (
           <button
-            onClick={fetchRecording}
+            type="button"
+            onClick={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              hasTriedFetchRef.current = false
+              fetchRecording()
+            }}
             className="mt-2 text-blue-600 hover:underline text-xs"
           >
             Try again

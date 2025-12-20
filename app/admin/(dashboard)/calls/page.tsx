@@ -98,13 +98,16 @@ function CallDetailsDialog({ call }: { call: Call & { orders: Order } }) {
             </div>
           )}
 
-          <CallRecording
-            callId={call.id}
-            recordingUrl={call.recording_url}
-            twilioRecordingUrl={call.twilio_recording_url}
-            vapiCallId={call.vapi_call_id}
-            shouldFetch={isOpen} // Only fetch when dialog is open
-          />
+          {isOpen && (
+            <CallRecording
+              key={call.id}
+              callId={call.id}
+              recordingUrl={call.recording_url}
+              twilioRecordingUrl={call.twilio_recording_url}
+              vapiCallId={call.vapi_call_id}
+              shouldFetch={true} // Only render when dialog is open, so always fetch
+            />
+          )}
 
           {call.responses && typeof call.responses === 'object' && (
             <details>
