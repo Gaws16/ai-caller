@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
-import { LayoutDashboard, Package, Phone, LogOut } from 'lucide-react'
+import { LayoutDashboard, Package, Phone, LogOut, CreditCard } from 'lucide-react'
 
 export default async function AdminDashboardLayout({
   children,
@@ -49,6 +49,13 @@ export default async function AdminDashboardLayout({
             >
               <Phone className="h-4 w-4" />
               Calls
+            </Link>
+            <Link
+              href="/admin/subscriptions"
+              className="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium hover:bg-zinc-200 dark:hover:bg-zinc-800"
+            >
+              <CreditCard className="h-4 w-4" />
+              Subscriptions
             </Link>
           </nav>
           <div className="border-t p-4">
