@@ -30,30 +30,46 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Verify the subscription belongs to the user
-    const { data: payment, error: paymentError } = await supabase
+    // First, find the payment record with this subscription ID
+    const { data: payments, error: paymentsError } = await supabase
       .from('payments')
-      .select('*, orders!inner(customer_email, total_amount, items)')
+      .select('*, orders(*)')
       .eq('stripe_subscription_id', subscriptionId)
-      .single()
 
-    if (paymentError || !payment) {
+    if (paymentsError) {
+      console.error('Error fetching payments:', paymentsError)
       return NextResponse.json(
-        { error: 'Subscription not found' },
+        { error: `Database error: ${paymentsError.message}` },
+        { status: 500 }
+      )
+    }
+
+    if (!payments || payments.length === 0) {
+      console.error('No payment found for subscription:', subscriptionId)
+      return NextResponse.json(
+        { error: 'Subscription not found in database' },
         { status: 404 }
       )
     }
 
-    const order = payment.orders as {
+    // Find the payment with matching user email
+    const payment = payments.find((p) => {
+      const order = Array.isArray(p.orders) ? p.orders[0] : p.orders
+      return order && (order as { customer_email: string | null }).customer_email === user.email
+    })
+
+    if (!payment) {
+      console.error('Payment found but does not belong to user')
+      return NextResponse.json(
+        { error: 'Subscription not found or does not belong to you' },
+        { status: 404 }
+      )
+    }
+
+    const order = (Array.isArray(payment.orders) ? payment.orders[0] : payment.orders) as {
       customer_email: string | null
       total_amount: number
       items: unknown
-    }
-    if (order.customer_email !== user.email) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 403 }
-      )
     }
 
     // Get the subscription from Stripe

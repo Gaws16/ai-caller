@@ -45,6 +45,27 @@ export default function MySubscriptionsPage() {
   const router = useRouter()
   const supabase = createClient()
 
+  // Helper function to deduplicate subscriptions by subscription_id
+  const deduplicateSubscriptions = (payments: unknown[]): SubscriptionWithOrder[] => {
+    const subscriptionMap = new Map<string, SubscriptionWithOrder>()
+    
+    payments.forEach((payment) => {
+      const p = payment as Payment & { orders?: Order | Order[] }
+      if (
+        p.stripe_subscription_id &&
+        p.subscription_status !== 'cancelled'
+      ) {
+        const subId = p.stripe_subscription_id
+        // Keep the first payment record for each subscription (the initial one)
+        if (!subscriptionMap.has(subId)) {
+          subscriptionMap.set(subId, p as SubscriptionWithOrder)
+        }
+      }
+    })
+    
+    return Array.from(subscriptionMap.values())
+  }
+
   useEffect(() => {
     const getUser = async () => {
       const {
@@ -70,13 +91,9 @@ export default function MySubscriptionsPage() {
       if (paymentsError) {
         console.error('Error fetching subscriptions:', paymentsError)
       } else {
-        // Filter to only active subscriptions
-        const activeSubscriptions = (paymentsData || []).filter(
-          (payment) =>
-            payment.stripe_subscription_id &&
-            payment.subscription_status !== 'cancelled'
-        ) as SubscriptionWithOrder[]
-        setSubscriptions(activeSubscriptions)
+        // Deduplicate subscriptions (one subscription can have multiple payment records from recurring invoices)
+        const uniqueSubscriptions = deduplicateSubscriptions(paymentsData || [])
+        setSubscriptions(uniqueSubscriptions)
       }
 
       setLoading(false)
@@ -166,12 +183,8 @@ export default function MySubscriptionsPage() {
         .order('created_at', { ascending: false })
 
       if (paymentsData) {
-        const activeSubscriptions = paymentsData.filter(
-          (payment) =>
-            payment.stripe_subscription_id &&
-            payment.subscription_status !== 'cancelled'
-        ) as SubscriptionWithOrder[]
-        setSubscriptions(activeSubscriptions)
+        const uniqueSubscriptions = deduplicateSubscriptions(paymentsData)
+        setSubscriptions(uniqueSubscriptions)
       }
 
       setUpdateDialogOpen(false)

@@ -23,27 +23,49 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Verify the subscription belongs to the user
-    const { data: payment, error: paymentError } = await supabase
-      .from('payments')
-      .select('*, orders!inner(customer_email)')
-      .eq('stripe_subscription_id', subscriptionId)
-      .single()
+    console.log('Canceling subscription:', subscriptionId, 'for user:', user.email)
 
-    if (paymentError || !payment) {
+    // First, find the payment record with this subscription ID
+    const { data: payments, error: paymentsError } = await supabase
+      .from('payments')
+      .select('*, orders(*)')
+      .eq('stripe_subscription_id', subscriptionId)
+
+    if (paymentsError) {
+      console.error('Error fetching payments:', paymentsError)
       return NextResponse.json(
-        { error: 'Subscription not found' },
+        { error: `Database error: ${paymentsError.message}` },
+        { status: 500 }
+      )
+    }
+
+    if (!payments || payments.length === 0) {
+      console.error('No payment found for subscription:', subscriptionId)
+      return NextResponse.json(
+        { error: 'Subscription not found in database' },
         { status: 404 }
       )
     }
 
-    const order = payment.orders as { customer_email: string | null }
-    if (order.customer_email !== user.email) {
+    // Find the payment with matching user email
+    const payment = payments.find((p) => {
+      const order = Array.isArray(p.orders) ? p.orders[0] : p.orders
+      return order && (order as { customer_email: string | null }).customer_email === user.email
+    })
+
+    if (!payment) {
+      console.error('Payment found but does not belong to user:', {
+        subscriptionId,
+        userEmail: user.email,
+        foundPayments: payments.length,
+      })
       return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 403 }
+        { error: 'Subscription not found or does not belong to you' },
+        { status: 404 }
       )
     }
+
+    console.log('Found payment record:', payment.id, 'for subscription:', subscriptionId)
 
     // Cancel the subscription in Stripe
     const subscription = await stripe.subscriptions.cancel(subscriptionId)
