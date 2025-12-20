@@ -34,13 +34,16 @@ export async function GET(
       );
     }
 
+    // Type assertion for the call data
+    const callData = call as { id: string; vapi_call_id: string | null; recording_url: string | null };
+
     // If recording URL already exists in database, return it
-    if (call.recording_url) {
-      return NextResponse.json({ recordingUrl: call.recording_url });
+    if (callData.recording_url) {
+      return NextResponse.json({ recordingUrl: callData.recording_url });
     }
 
     // If no VAPI call ID, can't fetch from VAPI
-    if (!call.vapi_call_id) {
+    if (!callData.vapi_call_id) {
       return NextResponse.json(
         { error: "No VAPI call ID found" },
         { status: 404 }
@@ -49,7 +52,7 @@ export async function GET(
 
     // Fetch call details from VAPI
     try {
-      const vapiCall = await getVapiCall(call.vapi_call_id);
+      const vapiCall = await getVapiCall(callData.vapi_call_id);
       
       // VAPI might return recording URL in different places
       // Check the response structure - recording URL is typically in the end-of-call-report webhook
@@ -66,8 +69,7 @@ export async function GET(
 
       if (recordingUrl) {
         // Update database with recording URL for future requests
-        await supabase
-          .from("calls")
+        await (supabase.from("calls") as any)
           .update({ recording_url: recordingUrl })
           .eq("id", callId);
 

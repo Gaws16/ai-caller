@@ -11,7 +11,7 @@ interface AudioPlayerProps {
 
 export function AudioPlayer({ src, className = '' }: AudioPlayerProps) {
   const audioRef = useRef<HTMLAudioElement>(null)
-  const animationFrameRef = useRef<number>()
+  const animationFrameRef = useRef<number | undefined>(undefined)
   const [isPlaying, setIsPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
