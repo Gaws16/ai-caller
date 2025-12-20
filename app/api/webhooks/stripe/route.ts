@@ -80,6 +80,22 @@ export async function POST(request: NextRequest) {
         await handlePaymentCanceled(event, supabase);
         break;
 
+      case 'customer.subscription.created':
+        await handleSubscriptionCreated(event, supabase);
+        break;
+
+      case 'invoice.paid':
+        await handleInvoicePaid(event, supabase);
+        break;
+
+      case 'invoice.payment_failed':
+        await handleInvoiceFailed(event, supabase);
+        break;
+
+      case 'customer.subscription.deleted':
+        await handleSubscriptionDeleted(event, supabase);
+        break;
+
       default:
         console.log(`Unhandled event type: ${event.type}`);
     }
@@ -261,6 +277,104 @@ async function handlePaymentCanceled(event: Stripe.Event, supabase: any) {
     .from('orders')
     .update({ payment_status: 'cancelled', status: 'cancelled' })
     .eq('id', orderId);
+}
+
+/**
+ * Handle subscription created - store subscription ID in payment record
+ */
+async function handleSubscriptionCreated(event: Stripe.Event, supabase: any) {
+  const subscription = event.data.object as Stripe.Subscription;
+  const orderId = subscription.metadata?.order_id;
+
+  if (!orderId) {
+    console.log('No order_id in subscription metadata, skipping');
+    return;
+  }
+
+  // Update payment record with subscription ID
+  await supabase
+    .from('payments')
+    .update({
+      stripe_subscription_id: subscription.id,
+      subscription_status: subscription.status,
+      subscription_interval:
+        subscription.items.data[0]?.price.recurring?.interval || null,
+    })
+    .eq('order_id', orderId)
+    .eq('status', 'pending');
+}
+
+/**
+ * Handle invoice paid - recurring subscription payment succeeded
+ */
+async function handleInvoicePaid(event: Stripe.Event, supabase: any) {
+  const invoice = event.data.object as Stripe.Invoice;
+  const subscriptionId = invoice.subscription;
+
+  if (!subscriptionId || typeof subscriptionId !== 'string') {
+    return;
+  }
+
+  // Find payment record by subscription ID
+  const { data: payment } = await supabase
+    .from('payments')
+    .select('order_id')
+    .eq('stripe_subscription_id', subscriptionId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .single();
+
+  if (!payment) {
+    console.log('No payment record found for subscription:', subscriptionId);
+    return;
+  }
+
+  // Create new payment record for this recurring payment
+  await supabase.from('payments').insert({
+    stripe_event_id: event.id,
+    stripe_subscription_id: subscriptionId,
+    stripe_invoice_id: invoice.id,
+    order_id: payment.order_id,
+    amount: invoice.amount_paid / 100,
+    currency: invoice.currency,
+    status: 'succeeded',
+    processed_at: new Date().toISOString(),
+  });
+}
+
+/**
+ * Handle invoice payment failed - subscription payment failed
+ */
+async function handleInvoiceFailed(event: Stripe.Event, supabase: any) {
+  const invoice = event.data.object as Stripe.Invoice;
+  const subscriptionId = invoice.subscription;
+
+  if (!subscriptionId || typeof subscriptionId !== 'string') {
+    return;
+  }
+
+  // Update subscription status
+  await supabase
+    .from('payments')
+    .update({
+      subscription_status: 'past_due',
+    })
+    .eq('stripe_subscription_id', subscriptionId);
+}
+
+/**
+ * Handle subscription deleted - subscription cancelled
+ */
+async function handleSubscriptionDeleted(event: Stripe.Event, supabase: any) {
+  const subscription = event.data.object as Stripe.Subscription;
+
+  // Update subscription status
+  await supabase
+    .from('payments')
+    .update({
+      subscription_status: 'cancelled',
+    })
+    .eq('stripe_subscription_id', subscription.id);
 }
 
 /**

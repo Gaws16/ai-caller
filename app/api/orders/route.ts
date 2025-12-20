@@ -23,14 +23,33 @@ const orderSchema = z.object({
   delivery_instructions: z.string().optional(),
   payment_type: z.enum(["one_time", "subscription"]),
   payment_method_id: z.string().min(1),
+  billing_cycle: z.enum(["monthly", "yearly"]).optional(), // Required for subscriptions
 });
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
+    let body;
+    try {
+      body = await request.json();
+    } catch (e) {
+      console.error('Failed to parse request body:', e);
+      return NextResponse.json(
+        { error: "Invalid JSON in request body" },
+        { status: 400 }
+      );
+    }
+    
     const validatedData = orderSchema.parse(body);
 
     const supabase = await createServiceClient();
+
+    // Validate billing_cycle for subscriptions
+    if (validatedData.payment_type === "subscription" && !validatedData.billing_cycle) {
+      return NextResponse.json(
+        { error: "billing_cycle is required for subscription orders" },
+        { status: 400 }
+      );
+    }
 
     // Create order in database
     const orderData: OrderInsert = {
@@ -45,6 +64,7 @@ export async function POST(request: NextRequest) {
       payment_type: validatedData.payment_type,
       payment_status: "pending",
       status: "pending",
+      billing_cycle: validatedData.billing_cycle || null,
     };
 
     const { data: order, error: orderError } = await supabase
@@ -54,9 +74,33 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (orderError || !order) {
-      console.error("Error creating order:", orderError);
+      console.error("Error creating order:", {
+        error: orderError,
+        code: orderError?.code,
+        message: orderError?.message,
+        hint: orderError?.hint,
+        orderData: { ...orderData, items: '[items array]' }, // Don't log full items
+      });
+      
+      // Check if it's a column error (migration not applied)
+      // Only trigger if it's specifically a "column does not exist" error
+      const errorMessage = orderError?.message?.toLowerCase() || '';
+      const isColumnError = orderError?.code === '42703' || // undefined_column
+                           errorMessage.includes('column "billing_cycle" does not exist') ||
+                           errorMessage.includes('column billing_cycle does not exist');
+      
+      if (isColumnError) {
+        return NextResponse.json(
+          { 
+            error: "Database migration required", 
+            details: "The billing_cycle column is missing. Please run: supabase db push or apply migration 006_add_billing_cycle.sql"
+          },
+          { status: 500 }
+        );
+      }
+      
       return NextResponse.json(
-        { error: "Failed to create order", details: orderError?.message },
+        { error: "Failed to create order", details: orderError?.message || orderError?.hint || 'Unknown error' },
         { status: 500 }
       );
     }
@@ -178,6 +222,7 @@ export async function POST(request: NextRequest) {
     }
   } catch (error) {
     if (error instanceof z.ZodError) {
+      console.error("Validation error:", error.issues);
       return NextResponse.json(
         { error: "Validation error", details: error.issues },
         { status: 400 }
@@ -185,8 +230,9 @@ export async function POST(request: NextRequest) {
     }
 
     console.error("Unexpected error:", error);
+    const errorMessage = error instanceof Error ? error.message : "Internal server error";
     return NextResponse.json(
-      { error: "Internal server error" },
+      { error: "Internal server error", details: errorMessage },
       { status: 500 }
     );
   }

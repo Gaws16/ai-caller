@@ -194,9 +194,8 @@ function CheckoutContent() {
           <Elements
             stripe={getStripe()}
             options={{
-              mode: 'payment',
+              mode: 'setup', // Use 'setup' mode since we're creating SetupIntent, not charging immediately
               currency: 'usd',
-              amount: Math.round(totalPrice * 100),
               paymentMethodCreation: 'manual',
               appearance: {
                 theme: 'stripe',
@@ -206,6 +205,7 @@ function CheckoutContent() {
             <CheckoutForm
               product={{ id: product.id, name: product.name, price: unitPrice }}
               paymentType={paymentType}
+              billingCycle={paymentType === 'subscription' ? billingCycle : undefined}
               quantity={quantity}
               onQuantityChange={setQuantity}
               onOrderCreated={handleOrderCreated}

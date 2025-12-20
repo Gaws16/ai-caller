@@ -207,3 +207,152 @@ export function getPaymentMethodDetails(
   }
 }
 
+/**
+ * Create a Stripe Product dynamically
+ */
+export async function createProduct({
+  name,
+  description,
+  metadata = {},
+}: {
+  name: string
+  description?: string
+  metadata?: Record<string, string>
+}): Promise<Stripe.Product> {
+  const product = await stripe.products.create({
+    name,
+    description,
+    metadata,
+  })
+  return product
+}
+
+/**
+ * Create a Stripe Price for a product dynamically
+ */
+export async function createPrice({
+  productId,
+  amount, // in cents
+  currency = 'usd',
+  interval, // 'month' or 'year'
+  metadata = {},
+}: {
+  productId: string
+  amount: number
+  currency?: string
+  interval: 'month' | 'year'
+  metadata?: Record<string, string>
+}): Promise<Stripe.Price> {
+  const price = await stripe.prices.create({
+    product: productId,
+    unit_amount: amount,
+    currency,
+    recurring: {
+      interval,
+    },
+    metadata,
+  })
+  return price
+}
+
+/**
+ * Create or get a Stripe Product and Price for a subscription
+ * Uses product name as a key to avoid duplicates
+ */
+export async function getOrCreateSubscriptionProduct({
+  productName,
+  amount, // in cents
+  currency = 'usd',
+  interval, // 'month' or 'year'
+  orderId,
+  metadata = {},
+}: {
+  productName: string
+  amount: number
+  currency?: string
+  interval: 'month' | 'year'
+  orderId: string
+  metadata?: Record<string, string>
+}): Promise<{ product: Stripe.Product; price: Stripe.Price }> {
+  // Search for existing product by name
+  const existingProducts = await stripe.products.search({
+    query: `name:'${productName}' AND metadata['order_id']:'${orderId}'`,
+    limit: 1,
+  })
+
+  let product: Stripe.Product
+  if (existingProducts.data.length > 0) {
+    product = existingProducts.data[0]
+  } else {
+    // Create new product
+    product = await createProduct({
+      name: productName,
+      metadata: {
+        order_id: orderId,
+        ...metadata,
+      },
+    })
+  }
+
+  // Search for existing price for this product and interval
+  const existingPrices = await stripe.prices.list({
+    product: product.id,
+    active: true,
+    limit: 10,
+  })
+
+  // Find price with matching amount and interval
+  let price = existingPrices.data.find(
+    (p) =>
+      p.recurring?.interval === interval &&
+      p.unit_amount === amount &&
+      p.currency === currency
+  )
+
+  if (!price) {
+    // Create new price
+    price = await createPrice({
+      productId: product.id,
+      amount,
+      currency,
+      interval,
+      metadata: {
+        order_id: orderId,
+        ...metadata,
+      },
+    })
+  }
+
+  return { product, price }
+}
+
+/**
+ * Create a Stripe Subscription
+ */
+export async function createSubscription({
+  customerId,
+  priceId,
+  paymentMethodId,
+  orderId,
+  metadata = {},
+}: {
+  customerId: string
+  priceId: string
+  paymentMethodId: string
+  orderId: string
+  metadata?: Record<string, string>
+}): Promise<Stripe.Subscription> {
+  const subscription = await stripe.subscriptions.create({
+    customer: customerId,
+    items: [{ price: priceId }],
+    default_payment_method: paymentMethodId,
+    metadata: {
+      order_id: orderId,
+      ...metadata,
+    },
+    expand: ['latest_invoice.payment_intent'],
+  })
+
+  return subscription
+}
+

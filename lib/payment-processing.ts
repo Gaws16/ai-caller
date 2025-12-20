@@ -5,7 +5,7 @@
  * Twilio and Vapi implementations.
  */
 
-import { stripe } from "./stripe";
+import { stripe, getOrCreateSubscriptionProduct, createSubscription } from "./stripe";
 import { createServiceClient } from "./supabase/server";
 import type { Database } from "./supabase/types";
 
@@ -57,10 +57,10 @@ export async function capturePaymentAfterConfirmation(
     return { success: false, error: "Payment record not found" };
   }
 
-  // Get the current order total and customer ID (may have changed during call)
+  // Get the current order total, customer ID, payment type, and billing cycle (may have changed during call)
   const { data: orderData, error: orderError } = await supabase
     .from("orders")
-    .select("total_amount, currency, stripe_customer_id")
+    .select("total_amount, currency, stripe_customer_id, payment_type, billing_cycle, items")
     .eq("id", orderId)
     .single();
 
@@ -71,7 +71,7 @@ export async function capturePaymentAfterConfirmation(
 
   const order = orderData as Pick<
     Database["public"]["Tables"]["orders"]["Row"],
-    "total_amount" | "currency" | "stripe_customer_id"
+    "total_amount" | "currency" | "stripe_customer_id" | "payment_type" | "billing_cycle" | "items"
   > | null;
   if (!order) {
     console.error("Order not found:", orderId);
@@ -89,7 +89,7 @@ export async function capturePaymentAfterConfirmation(
 
   // Check if we have a payment method (SetupIntent flow) or payment intent (legacy flow)
   if (payment.payment_method_id) {
-    // NEW SetupIntent flow: Create and charge a new PaymentIntent
+    // NEW SetupIntent flow: Create subscription or PaymentIntent
     try {
       console.log(
         "Using SetupIntent flow with payment_method:",
@@ -106,42 +106,110 @@ export async function capturePaymentAfterConfirmation(
         };
       }
 
-      const paymentIntent = await stripe.paymentIntents.create({
-        amount: finalAmount,
-        currency: currency,
-        customer: customerId, // Required for off-session payments
-        payment_method: payment.payment_method_id,
-        confirm: true,
-        off_session: true,
-        metadata: {
-          order_id: orderId,
-        },
-      });
+      // Check if this is a subscription order
+      if (order.payment_type === "subscription") {
+        console.log("Creating subscription for order:", orderId);
 
-      console.log(
-        "PaymentIntent created and charged:",
-        paymentIntent.id,
-        paymentIntent.status
-      );
+        if (!order.billing_cycle) {
+          console.error("Billing cycle is required for subscription orders");
+          return {
+            success: false,
+            error: "Billing cycle is required for subscription orders",
+          };
+        }
 
-      // Update payment record with the new payment intent ID
-      await (supabase.from("payments") as any)
-        .update({
-          stripe_payment_intent_id: paymentIntent.id,
-          amount: order.total_amount,
-          status:
-            paymentIntent.status === "succeeded" ? "succeeded" : "pending",
-        })
-        .eq("id", payment.id);
+        // Get product name from order items
+        const productName = Array.isArray(order.items) && order.items.length > 0
+          ? order.items[0].name || "Subscription"
+          : "Subscription";
 
-      // Update order status
-      if (paymentIntent.status === "succeeded") {
-        await (supabase.from("orders") as any)
-          .update({ payment_status: "paid" })
-          .eq("id", orderId);
+        // Get or create product and price
+        const { price } = await getOrCreateSubscriptionProduct({
+          productName,
+          amount: finalAmount,
+          currency: currency,
+          interval: order.billing_cycle === "monthly" ? "month" : "year",
+          orderId,
+        });
+
+        // Create subscription
+        const subscription = await createSubscription({
+          customerId,
+          priceId: price.id,
+          paymentMethodId: payment.payment_method_id,
+          orderId,
+        });
+
+        console.log(
+          "Subscription created:",
+          subscription.id,
+          subscription.status
+        );
+
+        // Update payment record with subscription ID
+        await (supabase.from("payments") as any)
+          .update({
+            stripe_subscription_id: subscription.id,
+            amount: order.total_amount,
+            status: subscription.status === "active" ? "succeeded" : "pending",
+            subscription_interval: order.billing_cycle === "monthly" ? "month" : "year",
+            subscription_status: subscription.status,
+          })
+          .eq("id", payment.id);
+
+        // Update order status
+        if (subscription.status === "active") {
+          await (supabase.from("orders") as any)
+            .update({ payment_status: "paid" })
+            .eq("id", orderId);
+        }
+
+        // Get the invoice payment intent if available
+        const invoice = subscription.latest_invoice;
+        const paymentIntentId = typeof invoice === 'object' && invoice !== null && 'payment_intent' in invoice
+          ? (typeof invoice.payment_intent === 'string' ? invoice.payment_intent : invoice.payment_intent?.id)
+          : undefined;
+
+        return { success: true, paymentIntentId };
+      } else {
+        // One-time payment: Create and charge a new PaymentIntent
+        const paymentIntent = await stripe.paymentIntents.create({
+          amount: finalAmount,
+          currency: currency,
+          customer: customerId, // Required for off-session payments
+          payment_method: payment.payment_method_id,
+          confirm: true,
+          off_session: true,
+          metadata: {
+            order_id: orderId,
+          },
+        });
+
+        console.log(
+          "PaymentIntent created and charged:",
+          paymentIntent.id,
+          paymentIntent.status
+        );
+
+        // Update payment record with the new payment intent ID
+        await (supabase.from("payments") as any)
+          .update({
+            stripe_payment_intent_id: paymentIntent.id,
+            amount: order.total_amount,
+            status:
+              paymentIntent.status === "succeeded" ? "succeeded" : "pending",
+          })
+          .eq("id", payment.id);
+
+        // Update order status
+        if (paymentIntent.status === "succeeded") {
+          await (supabase.from("orders") as any)
+            .update({ payment_status: "paid" })
+            .eq("id", orderId);
+        }
+
+        return { success: true, paymentIntentId: paymentIntent.id };
       }
-
-      return { success: true, paymentIntentId: paymentIntent.id };
     } catch (error: any) {
       console.error("Error creating payment:", error);
 

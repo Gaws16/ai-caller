@@ -54,6 +54,7 @@ export function PaymentForm({ onSubmit, loading }: PaymentFormProps) {
       })
 
       if (paymentMethodError) {
+        console.error('Payment method creation error:', paymentMethodError)
         setError(paymentMethodError.message || 'Payment failed')
         return
       }
@@ -65,7 +66,8 @@ export function PaymentForm({ onSubmit, loading }: PaymentFormProps) {
 
       await onSubmit(paymentMethod.id)
     } catch (err: any) {
-      setError(err.message || 'An unexpected error occurred')
+      console.error('Error in payment form submission:', err)
+      setError(err.message || 'An unexpected error occurred. Please try again.')
     }
   }
 

@@ -23,12 +23,13 @@ interface CheckoutFormProps {
     price: number
   }
   paymentType: 'one_time' | 'subscription'
+  billingCycle?: 'monthly' | 'yearly'
   quantity: number
   onQuantityChange: (quantity: number) => void
   onOrderCreated: (orderId: string) => void
 }
 
-export function CheckoutForm({ product, paymentType, quantity, onQuantityChange, onOrderCreated }: CheckoutFormProps) {
+export function CheckoutForm({ product, paymentType, billingCycle, quantity, onQuantityChange, onOrderCreated }: CheckoutFormProps) {
   const [formData, setFormData] = useState({
     name: '',
     phone: '',
@@ -93,17 +94,36 @@ export function CheckoutForm({ product, paymentType, quantity, onQuantityChange,
           delivery_instructions: validated.instructions,
           payment_type: paymentType,
           payment_method_id: paymentMethodId,
+          ...(paymentType === 'subscription' && billingCycle ? { billing_cycle: billingCycle } : {}),
         }),
       })
 
       if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to create order')
+        // Try to get error message from response
+        let errorData: any = {}
+        try {
+          const text = await response.text()
+          if (text) {
+            errorData = JSON.parse(text)
+          }
+        } catch (e) {
+          console.error('Failed to parse error response:', e)
+        }
+        
+        console.error('Order creation error:', {
+          status: response.status,
+          statusText: response.statusText,
+          errorData,
+        })
+        
+        const errorMessage = errorData.error || errorData.details || response.statusText || 'Failed to create order'
+        throw new Error(errorMessage)
       }
 
       const data = await response.json()
       onOrderCreated(data.order.id)
     } catch (error) {
+      console.error('Error in checkout form:', error)
       if (error instanceof z.ZodError) {
         const fieldErrors: Record<string, string> = {}
         error.issues.forEach((err) => {
