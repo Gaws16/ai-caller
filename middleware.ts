@@ -78,11 +78,8 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  if (pathname === '/admin/login' && session) {
-    const url = request.nextUrl.clone()
-    url.pathname = '/dashboard'
-    return NextResponse.redirect(url)
-  }
+  // Allow access to admin/login even when logged in (user can sign out and sign in as admin)
+  // No redirect needed - let the page handle showing appropriate UI
 
   return supabaseResponse
 }
