@@ -49,6 +49,7 @@ export function ProductGrid({ products, userSubscriptions = new Map() }: Product
           product={selectedProduct}
           open={!!selectedProduct}
           onOpenChange={(open) => !open && setSelectedProduct(null)}
+          subscription={userSubscriptions.get(selectedProduct.name)}
         />
       )}
     </>

@@ -24,6 +24,7 @@ export default function ProfilePage() {
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
+  const [currentPassword, setCurrentPassword] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
@@ -147,19 +148,44 @@ export default function ProfilePage() {
     setError(null)
     setSuccess(null)
 
+    if (!currentPassword) {
+      setError('Current password is required')
+      setSaving(false)
+      return
+    }
+
     if (password !== confirmPassword) {
-      setError('Passwords do not match')
+      setError('New passwords do not match')
       setSaving(false)
       return
     }
 
     if (password.length < 6) {
-      setError('Password must be at least 6 characters')
+      setError('New password must be at least 6 characters')
+      setSaving(false)
+      return
+    }
+
+    if (!user?.email) {
+      setError('User email not found')
       setSaving(false)
       return
     }
 
     try {
+      // First, verify the current password by attempting to sign in
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: user.email,
+        password: currentPassword,
+      })
+
+      if (signInError) {
+        setError('Current password is incorrect')
+        setSaving(false)
+        return
+      }
+
+      // If current password is correct, update to new password
       const { error: updateError } = await supabase.auth.updateUser({
         password,
       })
@@ -171,6 +197,7 @@ export default function ProfilePage() {
       }
 
       setSuccess('Password updated successfully!')
+      setCurrentPassword('')
       setPassword('')
       setConfirmPassword('')
       setSaving(false)
@@ -274,6 +301,20 @@ export default function ProfilePage() {
             <CardContent>
               <form onSubmit={handlePasswordUpdate} className="space-y-4">
                 <div className="space-y-2">
+                  <label htmlFor="currentPassword" className="text-sm font-medium">
+                    Current Password
+                  </label>
+                  <Input
+                    id="currentPassword"
+                    type="password"
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    required
+                    placeholder="••••••••"
+                    autoComplete="current-password"
+                  />
+                </div>
+                <div className="space-y-2">
                   <label htmlFor="password" className="text-sm font-medium">
                     New Password
                   </label>
@@ -290,7 +331,7 @@ export default function ProfilePage() {
                 </div>
                 <div className="space-y-2">
                   <label htmlFor="confirmPassword" className="text-sm font-medium">
-                    Confirm Password
+                    Confirm New Password
                   </label>
                   <Input
                     id="confirmPassword"

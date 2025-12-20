@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
@@ -7,16 +8,26 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
 import type { Product } from '@/lib/products'
-import { Check, Star, Users, Zap, Shield, Clock } from 'lucide-react'
+import type { Database } from '@/lib/supabase/types'
+import { Check, Star, Users, Zap, Shield, Clock, CheckCircle2, X } from 'lucide-react'
+
+type Payment = Database['public']['Tables']['payments']['Row']
+type Order = Database['public']['Tables']['orders']['Row']
+
+interface SubscriptionWithOrder extends Payment {
+  orders: Order
+}
 
 interface ProductDetailsDialogProps {
   product: Product
   open: boolean
   onOpenChange: (open: boolean) => void
+  subscription?: SubscriptionWithOrder
 }
 
 // Random details generator based on product
@@ -36,20 +47,73 @@ const getRandomDetails = (product: Product) => {
   return details
 }
 
-export function ProductDetailsDialog({ product, open, onOpenChange }: ProductDetailsDialogProps) {
+export function ProductDetailsDialog({ product, open, onOpenChange, subscription }: ProductDetailsDialogProps) {
   const details = getRandomDetails(product)
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false)
+  const [canceling, setCanceling] = useState(false)
+
+  const isSubscribed = !!subscription
+
+  const handleCancel = async () => {
+    if (!subscription?.stripe_subscription_id) return
+
+    setCanceling(true)
+    try {
+      const response = await fetch('/api/subscriptions/cancel', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          subscriptionId: subscription.stripe_subscription_id,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        alert(data.error || 'Failed to cancel subscription')
+        return
+      }
+
+      // Close dialogs and reload page to refresh subscription status
+      setCancelDialogOpen(false)
+      onOpenChange(false)
+      window.location.reload()
+    } catch (error) {
+      console.error('Error canceling subscription:', error)
+      alert('An error occurred while canceling the subscription')
+    } finally {
+      setCanceling(false)
+    }
+  }
+
+  const order = subscription?.orders as Order | undefined
+  const billingCycle = order?.billing_cycle || 'monthly'
+  const subscriptionAmount = billingCycle === 'monthly' ? product.monthlyPrice : product.yearlyPrice
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-            {product.name}
-          </DialogTitle>
-          <DialogDescription className="text-base pt-2">
-            {product.description}
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <div className="flex items-start justify-between">
+              <div className="flex-1">
+                <DialogTitle className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+                  {product.name}
+                </DialogTitle>
+                <DialogDescription className="text-base pt-2">
+                  {product.description}
+                </DialogDescription>
+              </div>
+              {isSubscribed && (
+                <div className="ml-4 bg-green-500/90 backdrop-blur-sm text-white px-3 py-1.5 rounded-full text-sm font-semibold border border-green-400/50 flex items-center gap-1.5">
+                  <CheckCircle2 className="w-4 h-4" />
+                  Subscribed
+                </div>
+              )}
+            </div>
+          </DialogHeader>
 
         <div className="space-y-6 mt-4">
           {/* Image - Full width at top */}
@@ -78,16 +142,32 @@ export function ProductDetailsDialog({ product, open, onOpenChange }: ProductDet
 
               {/* Pricing */}
               <div className="space-y-2 p-4 bg-gradient-to-br from-blue-50 to-purple-50 dark:from-blue-950/30 dark:to-purple-950/30 rounded-lg border border-blue-200 dark:border-blue-800">
-                <div className="flex items-baseline gap-2">
-                  <span className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                    ${product.price}
-                  </span>
-                  <span className="text-sm text-zinc-600 dark:text-zinc-400">one-time</span>
-                </div>
-                <div className="text-sm text-zinc-600 dark:text-zinc-400">
-                  <div>Monthly: ${product.monthlyPrice}/mo</div>
-                  <div>Yearly: ${product.yearlyPrice}/yr (save {Math.round((1 - product.yearlyPrice / (product.monthlyPrice * 12)) * 100)}%)</div>
-                </div>
+                {isSubscribed ? (
+                  <div>
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-4xl font-bold bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">
+                        ${subscriptionAmount}
+                      </span>
+                      <span className="text-sm text-zinc-600 dark:text-zinc-400">/{billingCycle === 'monthly' ? 'mo' : 'yr'}</span>
+                    </div>
+                    <div className="text-sm text-green-700 dark:text-green-400 font-medium mt-1">
+                      Active Subscription
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+                        ${product.price}
+                      </span>
+                      <span className="text-sm text-zinc-600 dark:text-zinc-400">one-time</span>
+                    </div>
+                    <div className="text-sm text-zinc-600 dark:text-zinc-400">
+                      <div>Monthly: ${product.monthlyPrice}/mo</div>
+                      <div>Yearly: ${product.yearlyPrice}/yr (save {Math.round((1 - product.yearlyPrice / (product.monthlyPrice * 12)) * 100)}%)</div>
+                    </div>
+                  </>
+                )}
               </div>
 
               {/* Quick Stats */}
@@ -179,27 +259,68 @@ export function ProductDetailsDialog({ product, open, onOpenChange }: ProductDet
 
           {/* Action Buttons */}
           <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t border-zinc-200 dark:border-zinc-800">
-            <Link href={`/checkout?product=${product.id}&type=one_time`} className="flex-1">
+            {isSubscribed ? (
               <Button
-                className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
-                onClick={() => onOpenChange(false)}
-              >
-                Buy Now - ${product.price}
-              </Button>
-            </Link>
-            <Link href={`/checkout?product=${product.id}&type=subscription&billing=monthly`} className="flex-1">
-              <Button
-                variant="outline"
+                variant="destructive"
                 className="w-full"
-                onClick={() => onOpenChange(false)}
+                onClick={() => setCancelDialogOpen(true)}
               >
-                Subscribe - ${product.monthlyPrice}/mo
+                <X className="mr-2 h-4 w-4" />
+                Cancel Subscription
               </Button>
-            </Link>
+            ) : (
+              <>
+                <Link href={`/checkout?product=${product.id}&type=one_time`} className="flex-1">
+                  <Button
+                    className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
+                    onClick={() => onOpenChange(false)}
+                  >
+                    Buy Now - ${product.price}
+                  </Button>
+                </Link>
+                <Link href={`/checkout?product=${product.id}&type=subscription&billing=monthly`} className="flex-1">
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => onOpenChange(false)}
+                  >
+                    Subscribe - ${product.monthlyPrice}/mo
+                  </Button>
+                </Link>
+              </>
+            )}
           </div>
         </div>
       </DialogContent>
     </Dialog>
+
+    {/* Cancel Subscription Dialog */}
+    <Dialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Cancel Subscription</DialogTitle>
+          <DialogDescription>
+            Are you sure you want to cancel your subscription to {product.name}? This action cannot be undone.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button
+            variant="outline"
+            onClick={() => setCancelDialogOpen(false)}
+          >
+            No, Keep It
+          </Button>
+          <Button
+            variant="destructive"
+            onClick={handleCancel}
+            disabled={canceling}
+          >
+            {canceling ? 'Canceling...' : 'Yes, Cancel'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   )
 }
 
