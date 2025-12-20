@@ -16,6 +16,8 @@ export interface CreateSetupIntentParams {
   returnUrl: string
   customerId: string // Required for off-session payments
   metadata?: Record<string, string>
+  ipAddress?: string // Optional: IP address for mandate_data (required for Link)
+  userAgent?: string // Optional: User agent for mandate_data (required for Link)
 }
 
 /**
@@ -52,8 +54,14 @@ export async function createSetupIntent({
   returnUrl,
   customerId,
   metadata = {},
+  ipAddress,
+  userAgent,
 }: CreateSetupIntentParams): Promise<Stripe.SetupIntent> {
-  const setupIntent = await stripe.setupIntents.create({
+  // Retrieve payment method to check its type
+  const paymentMethod = await stripe.paymentMethods.retrieve(paymentMethodId)
+  
+  // Build setup intent parameters
+  const setupIntentParams: Stripe.SetupIntentCreateParams = {
     customer: customerId, // Required for off-session reuse
     payment_method: paymentMethodId,
     confirm: true, // Confirm immediately to validate the card
@@ -63,7 +71,22 @@ export async function createSetupIntent({
       order_id: orderId,
       ...metadata,
     },
-  })
+  }
+
+  // For Link payment methods with off_session usage, mandate_data is required
+  if (paymentMethod.type === 'link' && setupIntentParams.usage === 'off_session') {
+    setupIntentParams.mandate_data = {
+      customer_acceptance: {
+        type: 'online',
+        online: {
+          ip_address: ipAddress || '0.0.0.0', // Use provided IP or placeholder
+          user_agent: userAgent || 'Stripe SetupIntent', // Use provided UA or placeholder
+        },
+      },
+    }
+  }
+
+  const setupIntent = await stripe.setupIntents.create(setupIntentParams)
 
   return setupIntent
 }

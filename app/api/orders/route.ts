@@ -86,11 +86,20 @@ export async function POST(request: NextRequest) {
         .update({ stripe_customer_id: customer.id })
         .eq("id", orderResult.id);
 
+      // Extract IP address and user agent for mandate_data (required for Link payments)
+      const ipAddress = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+                       request.headers.get("x-real-ip") ||
+                       request.ip ||
+                       undefined;
+      const userAgent = request.headers.get("user-agent") || undefined;
+
       const setupIntent = await createSetupIntent({
         paymentMethodId: validatedData.payment_method_id,
         orderId: orderResult.id,
         returnUrl,
         customerId: customer.id,
+        ipAddress,
+        userAgent,
       });
 
       // Get payment method details from Stripe
