@@ -30,19 +30,11 @@ export async function createClient() {
 }
 
 // Service role client for server-side operations that need elevated permissions
-export async function createServiceClient() {
-  return createServerClient<Database>(
+import { createClient as createSupabaseClient, type SupabaseClient } from "@supabase/supabase-js";
+
+export async function createServiceClient(): Promise<SupabaseClient<Database>> {
+  return createSupabaseClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return [];
-        },
-        setAll() {
-          // No-op for service role client
-        },
-      },
-    }
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
 }

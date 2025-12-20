@@ -309,7 +309,12 @@ async function handleSubscriptionCreated(event: Stripe.Event, supabase: any) {
  */
 async function handleInvoicePaid(event: Stripe.Event, supabase: any) {
   const invoice = event.data.object as Stripe.Invoice;
-  const subscriptionId = invoice.subscription;
+  // invoice.subscription can be a string ID or a Stripe.Subscription object (when expanded)
+  // Using type assertion because Stripe types may not include subscription in all cases
+  const subscription = (invoice as any).subscription;
+  const subscriptionId = typeof subscription === 'string' 
+    ? subscription 
+    : subscription?.id;
 
   if (!subscriptionId || typeof subscriptionId !== 'string') {
     return;
@@ -347,7 +352,11 @@ async function handleInvoicePaid(event: Stripe.Event, supabase: any) {
  */
 async function handleInvoiceFailed(event: Stripe.Event, supabase: any) {
   const invoice = event.data.object as Stripe.Invoice;
-  const subscriptionId = invoice.subscription;
+  // Using type assertion because Stripe types may not include subscription in all cases
+  const subscription = (invoice as any).subscription;
+  const subscriptionId = typeof subscription === 'string' 
+    ? subscription 
+    : subscription?.id;
 
   if (!subscriptionId || typeof subscriptionId !== 'string') {
     return;

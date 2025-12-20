@@ -119,8 +119,9 @@ export async function capturePaymentAfterConfirmation(
         }
 
         // Get product name from order items
-        const productName = Array.isArray(order.items) && order.items.length > 0
-          ? order.items[0].name || "Subscription"
+        const items = order.items as Array<{ name?: string }> | null;
+        const productName = Array.isArray(items) && items.length > 0 && items[0]
+          ? items[0].name || "Subscription"
           : "Subscription";
 
         // Get or create product and price
@@ -167,7 +168,9 @@ export async function capturePaymentAfterConfirmation(
         // Get the invoice payment intent if available
         const invoice = subscription.latest_invoice;
         const paymentIntentId = typeof invoice === 'object' && invoice !== null && 'payment_intent' in invoice
-          ? (typeof invoice.payment_intent === 'string' ? invoice.payment_intent : invoice.payment_intent?.id)
+          ? (typeof invoice.payment_intent === 'string' 
+              ? invoice.payment_intent 
+              : (invoice.payment_intent as { id?: string } | null)?.id)
           : undefined;
 
         return { success: true, paymentIntentId };

@@ -11,68 +11,54 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import Stripe from "stripe";
+import {
+  extractCallId,
+  extractTranscript,
+  extractRecordingUrl,
+  getCallAndOrder,
+  handleNoAnswer,
+} from "@/lib/vapi/webhook-helpers";
+import { dispatchToolCall } from "@/lib/vapi/webhook-tools";
 
 // Use Edge Runtime for faster cold starts and longer timeout for streaming
 export const runtime = "edge";
 
-// Initialize clients for Edge Runtime
+// Initialize Supabase client for Edge Runtime
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
-
 // ============================================
 // Types
 // ============================================
 
-interface ToolCall {
-  id: string;
-  type: "function";
-  function: {
-    name: string;
-    arguments: string;
-  };
-}
-
-// Vapi webhook payload - structure varies by event type
-interface VapiWebhookPayload {
-  message: {
-    type: string;
-    toolCallList?: ToolCall[];
-    call?: {
+interface VapiWebhookBody {
+  message?: {
+    type?: string;
+    toolCallList?: Array<{
       id: string;
-      status?: string;
-      metadata?: Record<string, string>;
-    };
+      function: {
+        name: string;
+        arguments: string | Record<string, unknown>;
+      };
+    }>;
     endedReason?: string;
-    transcript?: string;
     summary?: string;
     status?: string;
-  };
-  // Call info can be at root level or inside message
-  call?: {
-    id: string;
-    status: string;
     duration?: number;
-    metadata?: Record<string, string>;
+    artifact?: {
+      messages?: Array<{
+        role: string;
+        message?: string;
+        content?: string;
+      }>;
+    };
   };
-}
-
-/**
- * Extract call ID from Vapi payload (handles different payload structures)
- */
-function extractCallId(body: any): string | null {
-  // Try different possible locations for the call ID
-  return (
-    body?.call?.id ||
-    body?.message?.call?.id ||
-    body?.callId ||
-    body?.message?.callId ||
-    null
-  );
+  call?: {
+    id?: string;
+    duration?: number;
+  };
 }
 
 // ============================================
@@ -81,7 +67,7 @@ function extractCallId(body: any): string | null {
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
+    const body = (await request.json()) as VapiWebhookBody;
     const messageType = body.message?.type;
     const callId = extractCallId(body);
 
@@ -102,9 +88,11 @@ export async function POST(request: NextRequest) {
         console.log("Unhandled Vapi event type:", messageType);
         return NextResponse.json({ received: true });
     }
-  } catch (error: any) {
+  } catch (error) {
     console.error("Webhook error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    const errorMessage =
+      error instanceof Error ? error.message : "Unknown error";
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }
 
@@ -113,7 +101,7 @@ export async function POST(request: NextRequest) {
 // ============================================
 
 async function handleToolCalls(
-  body: any,
+  body: VapiWebhookBody,
   vapiCallId: string | null
 ): Promise<NextResponse> {
   const toolCalls = body.message?.toolCallList || [];
@@ -126,67 +114,32 @@ async function handleToolCalls(
   }
 
   // Save transcript from artifact.messages (updated on every tool call)
-  if (body.message?.artifact?.messages) {
-    const transcript = body.message.artifact.messages
-      .filter(
-        (msg: any) =>
-          msg.role === "bot" || msg.role === "user" || msg.role === "assistant"
-      )
-      .map((msg: any) => {
-        const role =
-          msg.role === "bot" || msg.role === "assistant"
-            ? "Assistant"
-            : "Customer";
-        const content = msg.message || msg.content || "";
-        return content ? `${role}: ${content}` : null;
-      })
-      .filter(Boolean)
-      .join("\n");
-
-    if (transcript) {
-      await supabase
-        .from("calls")
-        .update({ transcript })
-        .eq("vapi_call_id", vapiCallId);
-      console.log(`Transcript updated (${transcript.length} chars)`);
-    }
+  const transcript = extractTranscript(body);
+  if (transcript) {
+    await supabase
+      .from("calls")
+      .update({ transcript })
+      .eq("vapi_call_id", vapiCallId);
+    console.log(`Transcript updated (${transcript.length} chars)`);
   }
 
   for (const toolCall of toolCalls) {
     // Vapi sends arguments as object (not JSON string) in toolCallList
-    let args: Record<string, any>;
+    let args: Record<string, unknown>;
     if (typeof toolCall.function.arguments === "string") {
-      args = JSON.parse(toolCall.function.arguments || "{}");
+      args = JSON.parse(toolCall.function.arguments || "{}") as Record<
+        string,
+        unknown
+      >;
     } else {
-      args = toolCall.function.arguments || {};
+      args = (toolCall.function.arguments as Record<string, unknown>) || {};
     }
 
-    let result: { success: boolean; message: string; data?: any };
+    let result: { success: boolean; message: string; data?: unknown };
 
     try {
-      switch (toolCall.function.name) {
-        case "confirm_order":
-          result = await handleConfirmOrder(vapiCallId, args);
-          break;
-        case "change_quantity":
-          result = await handleChangeQuantity(vapiCallId, args);
-          break;
-        case "change_address":
-          result = await handleChangeAddress(vapiCallId, args);
-          break;
-        case "cancel_order":
-          result = await handleCancelOrder(vapiCallId, args);
-          break;
-        case "request_callback":
-          result = await handleRequestCallback(vapiCallId, args);
-          break;
-        default:
-          result = {
-            success: false,
-            message: `Unknown tool: ${toolCall.function.name}`,
-          };
-      }
-    } catch (error: any) {
+      result = await dispatchToolCall(vapiCallId, toolCall.function.name, args);
+    } catch (error) {
       console.error(`Error handling tool ${toolCall.function.name}:`, error);
       result = {
         success: false,
@@ -208,7 +161,7 @@ async function handleToolCalls(
 // ============================================
 
 async function handleEndOfCall(
-  body: any,
+  body: VapiWebhookBody,
   vapiCallId: string | null
 ): Promise<NextResponse> {
   const endedReason = body.message?.endedReason;
@@ -221,53 +174,19 @@ async function handleEndOfCall(
   console.log(`Call ended: ${vapiCallId}, reason: ${endedReason}`);
 
   // Get call record
-  const { data: call, error: callError } = await supabase
-    .from("calls")
-    .select("*, orders(*)")
-    .eq("vapi_call_id", vapiCallId)
-    .single();
-
-  if (callError || !call) {
-    console.error("Call not found:", callError);
+  let call;
+  try {
+    const result = await getCallAndOrder(vapiCallId);
+    call = result.call;
+  } catch (error) {
+    console.error("Call not found:", error);
     return NextResponse.json({ received: true });
   }
 
-  const order = Array.isArray(call.orders) ? call.orders[0] : call.orders;
-
-  // Extract transcript - try multiple locations
-  let transcript = body.message?.transcript;
-
-  // If no direct transcript, build from artifact messages
-  if (!transcript && body.message?.artifact?.messages) {
-    transcript = body.message.artifact.messages
-      .filter(
-        (msg: any) =>
-          msg.role === "bot" || msg.role === "user" || msg.role === "assistant"
-      )
-      .map((msg: any) => {
-        const role =
-          msg.role === "bot" || msg.role === "assistant"
-            ? "Assistant"
-            : "Customer";
-        return `${role}: ${msg.message || msg.content || ""}`;
-      })
-      .filter(
-        (line: string) =>
-          line.trim() !== "Assistant:" && line.trim() !== "Customer:"
-      )
-      .join("\n");
-  }
-
-  // Also try summary if available
+  // Extract transcript and recording URL
+  const transcript = extractTranscript(body);
   const summary = body.message?.summary;
-
-  // Extract recording URL - Vapi provides this in end-of-call-report
-  const recordingUrl =
-    body.message?.recordingUrl ||
-    body.message?.recording?.url ||
-    body.message?.stereoRecordingUrl ||
-    body.call?.recordingUrl ||
-    null;
+  const recordingUrl = extractRecordingUrl(body);
 
   console.log(
     `Transcript length: ${transcript?.length || 0}, Summary: ${
@@ -285,9 +204,6 @@ async function handleEndOfCall(
       recording_url: recordingUrl,
     })
     .eq("id", call.id);
-
-  // Determine final outcome and process payment
-  const outcome = call.outcome || "no-answer";
 
   // Only process payment if not already processed (we now capture on confirmation)
   if (!call.outcome) {
@@ -308,7 +224,7 @@ async function handleEndOfCall(
 // ============================================
 
 async function handleStatusUpdate(
-  body: any,
+  body: VapiWebhookBody,
   vapiCallId: string | null
 ): Promise<NextResponse> {
   const status = body.message?.status;
@@ -329,455 +245,4 @@ async function handleStatusUpdate(
     .eq("vapi_call_id", vapiCallId);
 
   return NextResponse.json({ received: true });
-}
-
-// ============================================
-// Vapi API Helper
-// ============================================
-
-async function endVapiCall(vapiCallId: string): Promise<void> {
-  try {
-    const response = await fetch(`https://api.vapi.ai/call/${vapiCallId}/end`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.VAPI_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-    });
-
-    if (!response.ok) {
-      console.error("Failed to end Vapi call:", await response.text());
-    } else {
-      console.log(`Vapi call ${vapiCallId} ended programmatically`);
-    }
-  } catch (error) {
-    console.error("Error ending Vapi call:", error);
-  }
-}
-
-// ============================================
-// Tool Implementations (Inline for Edge Runtime)
-// ============================================
-
-async function getCallAndOrder(vapiCallId: string) {
-  const { data: call, error } = await supabase
-    .from("calls")
-    .select("*, orders(*)")
-    .eq("vapi_call_id", vapiCallId)
-    .single();
-
-  if (error || !call) {
-    throw new Error(`Call not found: ${vapiCallId}`);
-  }
-
-  const order = Array.isArray(call.orders) ? call.orders[0] : call.orders;
-  return { call, order };
-}
-
-async function handleConfirmOrder(vapiCallId: string, args: any) {
-  const { call, order } = await getCallAndOrder(vapiCallId);
-
-  await supabase
-    .from("orders")
-    .update({
-      delivery_time_preference: args.delivery_time,
-      status: "confirmed",
-    })
-    .eq("id", order.id);
-
-  await supabase
-    .from("calls")
-    .update({
-      outcome: "confirmed",
-      responses: {
-        ...(call.responses || {}),
-        CONFIRMATION: { intent: "CONFIRM", delivery_time: args.delivery_time },
-      },
-    })
-    .eq("id", call.id);
-
-  // Capture payment immediately when order is confirmed (don't wait for call to end)
-  console.log(`Capturing payment for confirmed order: ${order.id}`);
-  await capturePayment(order.id);
-
-  // Schedule call to end (don't await - let it happen after response)
-  endVapiCall(vapiCallId).catch(console.error);
-
-  return {
-    success: true,
-    message: `Order confirmed! Delivery set for ${args.delivery_time}. Thank you and goodbye!`,
-    endCall: true, // Signal to Vapi to end the call
-  };
-}
-
-async function handleChangeQuantity(vapiCallId: string, args: any) {
-  const { call, order } = await getCallAndOrder(vapiCallId);
-
-  const newQuantity = parseInt(args.new_quantity, 10);
-  if (isNaN(newQuantity) || newQuantity < 0) {
-    return { success: false, message: "Invalid quantity specified." };
-  }
-
-  const items = [...(order.items as any[])];
-  const searchTerm = args.item_name.toLowerCase();
-  const itemIndex = items.findIndex((i: any) =>
-    i.name.toLowerCase().includes(searchTerm)
-  );
-
-  if (itemIndex === -1) {
-    return {
-      success: false,
-      message: `I couldn't find "${args.item_name}" in your order.`,
-    };
-  }
-
-  const item = items[itemIndex];
-  const oldQty = item.quantity;
-
-  if (newQuantity === 0) {
-    items.splice(itemIndex, 1);
-  } else {
-    items[itemIndex] = { ...item, quantity: newQuantity };
-  }
-
-  if (items.length === 0) {
-    return {
-      success: false,
-      message: "Cannot remove all items. Would you like to cancel instead?",
-    };
-  }
-
-  const newTotal = items.reduce(
-    (sum: number, i: any) => sum + i.price * i.quantity,
-    0
-  );
-
-  await supabase
-    .from("orders")
-    .update({ items, total_amount: newTotal })
-    .eq("id", order.id);
-
-  await supabase
-    .from("payments")
-    .update({ amount: newTotal })
-    .eq("order_id", order.id)
-    .eq("status", "pending");
-
-  await supabase
-    .from("calls")
-    .update({
-      responses: {
-        ...(call.responses || {}),
-        QUANTITY_CHANGE: { item: item.name, from: oldQty, to: newQuantity },
-      },
-    })
-    .eq("id", call.id);
-
-  const action =
-    newQuantity === 0
-      ? "removed"
-      : newQuantity > oldQty
-      ? "increased"
-      : "decreased";
-  return {
-    success: true,
-    message: `${item.name} ${action}. New total: $${newTotal.toFixed(2)}.`,
-  };
-}
-
-async function handleChangeAddress(vapiCallId: string, args: any) {
-  const { call, order } = await getCallAndOrder(vapiCallId);
-
-  await supabase
-    .from("orders")
-    .update({ delivery_address: args.new_address })
-    .eq("id", order.id);
-
-  await supabase
-    .from("calls")
-    .update({
-      responses: {
-        ...(call.responses || {}),
-        ADDRESS_CHANGE: { new_address: args.new_address },
-      },
-    })
-    .eq("id", call.id);
-
-  return {
-    success: true,
-    message: `Address updated to: ${args.new_address}`,
-  };
-}
-
-async function handleCancelOrder(vapiCallId: string, args: any) {
-  const { call, order } = await getCallAndOrder(vapiCallId);
-
-  // Update order status
-  await supabase
-    .from("orders")
-    .update({ status: "cancelled" })
-    .eq("id", order.id);
-
-  await supabase
-    .from("calls")
-    .update({
-      outcome: "cancelled",
-      responses: {
-        ...(call.responses || {}),
-        CANCELLATION: { reason: args.reason },
-      },
-    })
-    .eq("id", call.id);
-
-  // Cancel payment immediately
-  console.log(`Cancelling payment for order: ${order.id}`);
-  await cancelPayment(order.id);
-
-  // Schedule call to end (don't await - let it happen after response)
-  endVapiCall(vapiCallId).catch(console.error);
-
-  return {
-    success: true,
-    message: "Order has been cancelled. You won't be charged. Goodbye!",
-    endCall: true, // Signal to Vapi to end the call
-  };
-}
-
-async function handleRequestCallback(vapiCallId: string, args: any) {
-  const { call } = await getCallAndOrder(vapiCallId);
-
-  await supabase
-    .from("calls")
-    .update({
-      outcome: "callback_requested",
-      responses: {
-        ...(call.responses || {}),
-        CALLBACK: { reason: args.reason },
-      },
-    })
-    .eq("id", call.id);
-
-  return {
-    success: true,
-    message: "A team member will call you back shortly.",
-  };
-}
-
-// ============================================
-// Payment Processing
-// ============================================
-
-async function capturePayment(orderId: string) {
-  console.log("Capturing payment for order:", orderId);
-
-  const { data: payment } = await supabase
-    .from("payments")
-    .select("*")
-    .eq("order_id", orderId)
-    .eq("status", "pending")
-    .limit(1)
-    .single();
-
-  if (!payment?.payment_method_id) {
-    console.error("No payment method found");
-    return;
-  }
-
-  const { data: order } = await supabase
-    .from("orders")
-    .select(
-      "total_amount, currency, stripe_customer_id, payment_type, billing_cycle, items"
-    )
-    .eq("id", orderId)
-    .single();
-
-  if (!order?.stripe_customer_id) {
-    console.error("No customer ID found");
-    return;
-  }
-
-  const finalAmount = Math.round(Number(order.total_amount) * 100);
-  const currency = order.currency || "usd";
-
-  try {
-    // Check if this is a subscription order
-    if (order.payment_type === "subscription") {
-      console.log("Creating subscription for order:", orderId);
-
-      if (!order.billing_cycle) {
-        console.error("Billing cycle is required for subscription orders");
-        return;
-      }
-
-      // Get product name from order items
-      const productName =
-        Array.isArray(order.items) && order.items.length > 0
-          ? order.items[0].name || "Subscription"
-          : "Subscription";
-
-      // Create or get product and price
-      // First, search for existing product
-      const existingProducts = await stripe.products.search({
-        query: `name:'${productName}' AND metadata['order_id']:'${orderId}'`,
-        limit: 1,
-      });
-
-      let product;
-      if (existingProducts.data.length > 0) {
-        product = existingProducts.data[0];
-      } else {
-        product = await stripe.products.create({
-          name: productName,
-          metadata: { order_id: orderId },
-        });
-      }
-
-      // Search for existing price
-      const existingPrices = await stripe.prices.list({
-        product: product.id,
-        active: true,
-        limit: 10,
-      });
-
-      const interval = order.billing_cycle === "monthly" ? "month" : "year";
-      let price = existingPrices.data.find(
-        (p) =>
-          p.recurring?.interval === interval &&
-          p.unit_amount === finalAmount &&
-          p.currency === currency
-      );
-
-      if (!price) {
-        price = await stripe.prices.create({
-          product: product.id,
-          unit_amount: finalAmount,
-          currency: currency,
-          recurring: { interval },
-          metadata: { order_id: orderId },
-        });
-      }
-
-      // Create subscription
-      const subscription = await stripe.subscriptions.create({
-        customer: order.stripe_customer_id,
-        items: [{ price: price.id }],
-        default_payment_method: payment.payment_method_id,
-        metadata: { order_id: orderId },
-        expand: ["latest_invoice.payment_intent"],
-      });
-
-      console.log(
-        "Subscription created:",
-        subscription.id,
-        subscription.status
-      );
-
-      // Update payment record
-      await supabase
-        .from("payments")
-        .update({
-          stripe_subscription_id: subscription.id,
-          amount: order.total_amount,
-          status: subscription.status === "active" ? "succeeded" : "pending",
-          subscription_interval: interval,
-          subscription_status: subscription.status,
-        })
-        .eq("id", payment.id);
-
-      // Update order status
-      if (subscription.status === "active") {
-        await supabase
-          .from("orders")
-          .update({ payment_status: "paid" })
-          .eq("id", orderId);
-      }
-
-      console.log("Subscription created successfully:", subscription.id);
-    } else {
-      // One-time payment: Create PaymentIntent
-      const paymentIntent = await stripe.paymentIntents.create({
-        amount: finalAmount,
-        currency: currency,
-        customer: order.stripe_customer_id,
-        payment_method: payment.payment_method_id,
-        confirm: true,
-        off_session: true,
-        metadata: { order_id: orderId },
-      });
-
-      await supabase
-        .from("payments")
-        .update({
-          stripe_payment_intent_id: paymentIntent.id,
-          status:
-            paymentIntent.status === "succeeded" ? "succeeded" : "pending",
-        })
-        .eq("id", payment.id);
-
-      if (paymentIntent.status === "succeeded") {
-        await supabase
-          .from("orders")
-          .update({ payment_status: "paid" })
-          .eq("id", orderId);
-      }
-
-      console.log("Payment captured:", paymentIntent.id);
-    }
-  } catch (error: any) {
-    console.error("Payment capture failed:", error.message);
-    await supabase
-      .from("payments")
-      .update({ status: "failed" })
-      .eq("id", payment.id);
-    await supabase
-      .from("orders")
-      .update({ payment_status: "failed" })
-      .eq("id", orderId);
-  }
-}
-
-async function cancelPayment(orderId: string) {
-  console.log("Cancelling payment for order:", orderId);
-
-  await supabase
-    .from("orders")
-    .update({ payment_status: "cancelled", status: "cancelled" })
-    .eq("id", orderId);
-
-  await supabase
-    .from("payments")
-    .update({ status: "cancelled" })
-    .eq("order_id", orderId)
-    .eq("status", "pending");
-}
-
-async function handleNoAnswer(callId: string) {
-  const retryDelayMinutes = parseInt(
-    process.env.RETRY_DELAY_MINUTES || "120",
-    10
-  );
-  const nextRetry = new Date(Date.now() + retryDelayMinutes * 60 * 1000);
-
-  const { data: call } = await supabase
-    .from("calls")
-    .select("retry_count")
-    .eq("id", callId)
-    .single();
-
-  if (call && (call.retry_count || 0) < 1) {
-    await supabase
-      .from("calls")
-      .update({
-        outcome: "no-answer",
-        next_retry_at: nextRetry.toISOString(),
-      })
-      .eq("id", callId);
-    console.log(`Retry scheduled for: ${nextRetry.toISOString()}`);
-  } else {
-    await supabase
-      .from("calls")
-      .update({ outcome: "no-answer" })
-      .eq("id", callId);
-    console.log("Max retries reached");
-  }
 }
