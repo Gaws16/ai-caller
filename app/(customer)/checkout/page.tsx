@@ -106,9 +106,38 @@ function CheckoutContent() {
       <header className="sticky top-0 z-50 border-b bg-white/80 dark:bg-zinc-900/80 backdrop-blur-lg transition-all duration-300 hover:shadow-lg">
         <div className="container mx-auto px-4 py-4">
           <Link href="/" className="group flex items-center gap-2 text-2xl font-bold transition-all duration-300">
-            <span className="bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent group-hover:from-blue-500 group-hover:via-purple-500 group-hover:to-pink-500 transition-all duration-300">
-              AppHub
-            </span>
+            <div className="relative">
+              {/* Christmas Hat */}
+              <svg
+                className="absolute -top-4 -right-1 w-10 h-10 z-10 group-hover:scale-110 transition-transform duration-300"
+                viewBox="0 0 32 32"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                {/* Hat cone - curved to the right */}
+                <path
+                  d="M8 16 Q12 8 20 8 Q24 8 26 12 L26 20 Q24 24 20 24 Q16 24 12 20 Z"
+                  fill="#DC2626"
+                  className="drop-shadow-sm"
+                />
+                {/* White brim - curved */}
+                <path
+                  d="M10 20 Q16 18 22 20 Q24 20.5 24 22 Q22 23 20 22.5 Q16 22 12 22.5 Q10 22.5 10 20 Z"
+                  fill="#FFFFFF"
+                />
+                {/* White pom-pom */}
+                <circle
+                  cx="24"
+                  cy="10"
+                  r="3"
+                  fill="#FFFFFF"
+                  className="drop-shadow-sm"
+                />
+              </svg>
+              <span className="relative bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent group-hover:from-blue-500 group-hover:via-purple-500 group-hover:to-pink-500 transition-all duration-300">
+                VoiceVerify
+              </span>
+            </div>
           </Link>
         </div>
       </header>

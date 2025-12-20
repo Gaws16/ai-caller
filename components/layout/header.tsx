@@ -49,8 +49,35 @@ export function Header() {
           >
             <div className="relative">
               <div className="absolute inset-0 bg-gradient-to-r from-blue-600 to-purple-600 blur-lg opacity-0 group-hover:opacity-50 transition-opacity duration-300" />
+              {/* Christmas Hat */}
+              <svg
+                className="absolute -top-4 -right-1 w-10 h-10 z-10 group-hover:scale-110 transition-transform duration-300"
+                viewBox="0 0 32 32"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                {/* Hat cone - curved to the right */}
+                <path
+                  d="M8 16 Q12 8 20 8 Q24 8 26 12 L26 20 Q24 24 20 24 Q16 24 12 20 Z"
+                  fill="#DC2626"
+                  className="drop-shadow-sm"
+                />
+                {/* White brim - curved */}
+                <path
+                  d="M10 20 Q16 18 22 20 Q24 20.5 24 22 Q22 23 20 22.5 Q16 22 12 22.5 Q10 22.5 10 20 Z"
+                  fill="#FFFFFF"
+                />
+                {/* White pom-pom */}
+                <circle
+                  cx="24"
+                  cy="10"
+                  r="3"
+                  fill="#FFFFFF"
+                  className="drop-shadow-sm"
+                />
+              </svg>
               <span className="relative bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent group-hover:from-blue-500 group-hover:via-purple-500 group-hover:to-pink-500 transition-all duration-300">
-                AppHub
+                VoiceVerify
               </span>
             </div>
             <span className="text-xs bg-gradient-to-r from-blue-600 to-purple-600 text-white px-2 py-0.5 rounded-full font-semibold opacity-0 group-hover:opacity-100 transform translate-x-2 group-hover:translate-x-0 transition-all duration-300">
