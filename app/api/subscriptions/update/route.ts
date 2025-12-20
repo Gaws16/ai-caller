@@ -53,9 +53,15 @@ export async function POST(request: NextRequest) {
     }
 
     // Find the payment with matching user email
-    const payment = payments.find((p) => {
+    type PaymentWithOrder = {
+      orders?: { customer_email: string | null; total_amount: number; items: unknown } | Array<{ customer_email: string | null; total_amount: number; items: unknown }>
+      order_id: string
+      [key: string]: unknown
+    }
+    
+    const payment = (payments as PaymentWithOrder[]).find((p) => {
       const order = Array.isArray(p.orders) ? p.orders[0] : p.orders
-      return order && (order as { customer_email: string | null }).customer_email === user.email
+      return order && order.customer_email === user.email
     })
 
     if (!payment) {
@@ -66,11 +72,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const order = (Array.isArray(payment.orders) ? payment.orders[0] : payment.orders) as {
-      customer_email: string | null
-      total_amount: number
-      items: unknown
-    }
+    const order = (Array.isArray(payment.orders) ? payment.orders[0] : payment.orders)!
 
     // Get the subscription from Stripe
     const subscription = await stripe.subscriptions.retrieve(subscriptionId)
@@ -123,16 +125,14 @@ export async function POST(request: NextRequest) {
     })
 
     // Update the payment record
-    await supabase
-      .from('payments')
+    await (supabase.from('payments') as any)
       .update({
         subscription_interval: interval,
       })
       .eq('stripe_subscription_id', subscriptionId)
 
     // Update the order billing cycle
-    await supabase
-      .from('orders')
+    await (supabase.from('orders') as any)
       .update({
         billing_cycle: billingCycle,
       })
@@ -143,7 +143,7 @@ export async function POST(request: NextRequest) {
       subscription: {
         id: updatedSubscription.id,
         status: updatedSubscription.status,
-        current_period_end: updatedSubscription.current_period_end,
+        current_period_end: 'current_period_end' in updatedSubscription ? updatedSubscription.current_period_end : null,
       },
     })
   } catch (error: unknown) {

@@ -48,9 +48,14 @@ export async function POST(request: NextRequest) {
     }
 
     // Find the payment with matching user email
-    const payment = payments.find((p) => {
+    type PaymentWithOrder = {
+      orders?: { customer_email: string | null } | Array<{ customer_email: string | null }>
+      [key: string]: unknown
+    }
+    
+    const payment = (payments as PaymentWithOrder[]).find((p) => {
       const order = Array.isArray(p.orders) ? p.orders[0] : p.orders
-      return order && (order as { customer_email: string | null }).customer_email === user.email
+      return order && order.customer_email === user.email
     })
 
     if (!payment) {
@@ -65,14 +70,13 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    console.log('Found payment record:', payment.id, 'for subscription:', subscriptionId)
+    console.log('Found payment record:', (payment as { id: string }).id, 'for subscription:', subscriptionId)
 
     // Cancel the subscription in Stripe
     const subscription = await stripe.subscriptions.cancel(subscriptionId)
 
     // Update the payment record
-    await supabase
-      .from('payments')
+    await (supabase.from('payments') as any)
       .update({
         subscription_status: 'cancelled',
       })

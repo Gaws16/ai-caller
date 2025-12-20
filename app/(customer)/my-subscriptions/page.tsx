@@ -73,7 +73,7 @@ export default function MySubscriptionsPage() {
         error: userError,
       } = await supabase.auth.getUser()
 
-      if (userError || !currentUser) {
+      if (userError || !currentUser || !currentUser.email) {
         router.push('/login?redirect=/my-subscriptions')
         return
       }
@@ -125,20 +125,18 @@ export default function MySubscriptionsPage() {
       }
 
       // Refresh subscriptions
+      if (!user?.email) return
+      
       const { data: paymentsData } = await supabase
         .from('payments')
         .select('*, orders!inner(*)')
         .not('stripe_subscription_id', 'is', null)
-        .eq('orders.customer_email', user?.email)
+        .eq('orders.customer_email', user.email)
         .order('created_at', { ascending: false })
 
       if (paymentsData) {
-        const activeSubscriptions = paymentsData.filter(
-          (payment) =>
-            payment.stripe_subscription_id &&
-            payment.subscription_status !== 'cancelled'
-        ) as SubscriptionWithOrder[]
-        setSubscriptions(activeSubscriptions)
+        const uniqueSubscriptions = deduplicateSubscriptions(paymentsData)
+        setSubscriptions(uniqueSubscriptions)
       }
 
       setCancelDialogOpen(false)
@@ -175,11 +173,13 @@ export default function MySubscriptionsPage() {
       }
 
       // Refresh subscriptions
+      if (!user?.email) return
+      
       const { data: paymentsData } = await supabase
         .from('payments')
         .select('*, orders!inner(*)')
         .not('stripe_subscription_id', 'is', null)
-        .eq('orders.customer_email', user?.email)
+        .eq('orders.customer_email', user.email)
         .order('created_at', { ascending: false })
 
       if (paymentsData) {

@@ -38,7 +38,7 @@ export default function MyPurchasesPage() {
         error: userError,
       } = await supabase.auth.getUser()
 
-      if (userError || !currentUser) {
+      if (userError || !currentUser || !currentUser.email) {
         router.push('/login?redirect=/my-purchases')
         return
       }
