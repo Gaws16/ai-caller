@@ -1,30 +1,98 @@
 'use client'
 
+import { useState } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardFooter } from '@/components/ui/card'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import type { Product } from '@/lib/products'
-import { Check } from 'lucide-react'
+import type { Database } from '@/lib/supabase/types'
+import { Check, CheckCircle2, X } from 'lucide-react'
+
+type Payment = Database['public']['Tables']['payments']['Row']
+type Order = Database['public']['Tables']['orders']['Row']
+
+interface SubscriptionWithOrder extends Payment {
+  orders: Order
+}
 
 interface ProductCardProps {
   product: Product
   onProductClick?: (product: Product) => void
+  subscription?: SubscriptionWithOrder
 }
 
-export function ProductCard({ product, onProductClick }: ProductCardProps) {
-  return (
-    <Card 
-      className="group relative flex flex-col overflow-hidden border-zinc-200 dark:border-zinc-800 transition-all duration-500 hover:shadow-2xl hover:shadow-blue-500/20 hover:-translate-y-2 hover:border-blue-400/50 cursor-pointer"
-      onClick={() => onProductClick?.(product)}
-    >
-      {/* Gradient overlay that appears on hover */}
-      <div className="absolute inset-0 bg-gradient-to-br from-blue-500/0 via-purple-500/0 to-pink-500/0 group-hover:from-blue-500/10 group-hover:via-purple-500/10 group-hover:to-pink-500/10 transition-all duration-500 z-10 pointer-events-none" />
+export function ProductCard({ product, onProductClick, subscription }: ProductCardProps) {
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false)
+  const [canceling, setCanceling] = useState(false)
 
-      {/* Category badge */}
-      <div className="absolute top-3 right-3 z-20 bg-black/70 backdrop-blur-sm text-white px-3 py-1 rounded-full text-xs font-semibold border border-white/20 opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-y-2 group-hover:translate-y-0">
-        {product.category}
-      </div>
+  const isSubscribed = !!subscription
+
+  const handleCancel = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (!subscription?.stripe_subscription_id) return
+
+    setCanceling(true)
+    try {
+      const response = await fetch('/api/subscriptions/cancel', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          subscriptionId: subscription.stripe_subscription_id,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        alert(data.error || 'Failed to cancel subscription')
+        return
+      }
+
+      // Reload the page to refresh subscription status
+      window.location.reload()
+    } catch (error) {
+      console.error('Error canceling subscription:', error)
+      alert('An error occurred while canceling the subscription')
+    } finally {
+      setCanceling(false)
+      setCancelDialogOpen(false)
+    }
+  }
+
+  return (
+    <>
+      <Card 
+        className={`group relative flex flex-col overflow-hidden border-zinc-200 dark:border-zinc-800 transition-all duration-500 hover:shadow-2xl hover:shadow-blue-500/20 hover:-translate-y-2 hover:border-blue-400/50 cursor-pointer ${
+          isSubscribed ? 'ring-2 ring-green-500/50' : ''
+        }`}
+        onClick={() => onProductClick?.(product)}
+      >
+        {/* Gradient overlay that appears on hover */}
+        <div className="absolute inset-0 bg-gradient-to-br from-blue-500/0 via-purple-500/0 to-pink-500/0 group-hover:from-blue-500/10 group-hover:via-purple-500/10 group-hover:to-pink-500/10 transition-all duration-500 z-10 pointer-events-none" />
+
+        {/* Subscription badge */}
+        {isSubscribed && (
+          <div className="absolute top-3 left-3 z-20 bg-green-500/90 backdrop-blur-sm text-white px-3 py-1 rounded-full text-xs font-semibold border border-green-400/50 flex items-center gap-1.5">
+            <CheckCircle2 className="w-3 h-3" />
+            Subscribed
+          </div>
+        )}
+
+        {/* Category badge */}
+        <div className="absolute top-3 right-3 z-20 bg-black/70 backdrop-blur-sm text-white px-3 py-1 rounded-full text-xs font-semibold border border-white/20 opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-y-2 group-hover:translate-y-0">
+          {product.category}
+        </div>
 
       {/* Image container with scale effect */}
       <div className="relative aspect-[4/3] w-full bg-gradient-to-br from-zinc-100 to-zinc-200 dark:from-zinc-900 dark:to-zinc-800 overflow-hidden">
@@ -81,31 +149,75 @@ export function ProductCard({ product, onProductClick }: ProductCardProps) {
       </CardContent>
 
       <CardFooter className="flex gap-2 p-6 pt-0 relative z-20">
-        <Link 
-          href={`/checkout?product=${product.id}&type=one_time`} 
-          className="flex-1"
-          onClick={(e) => e.stopPropagation()}
-        >
+        {isSubscribed ? (
           <Button
-            className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 transform transition-all duration-300 hover:scale-105 hover:shadow-lg hover:shadow-blue-500/50"
-            variant="default"
+            variant="destructive"
+            className="w-full"
+            onClick={(e) => {
+              e.stopPropagation()
+              setCancelDialogOpen(true)
+            }}
           >
-            Buy Now
+            <X className="mr-2 h-4 w-4" />
+            Cancel Subscription
           </Button>
-        </Link>
-        <Link 
-          href={`/checkout?product=${product.id}&type=subscription&billing=monthly`} 
-          className="flex-1"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <Button
-            className="w-full border-2 border-zinc-300 dark:border-zinc-700 hover:border-blue-500 dark:hover:border-blue-400 transform transition-all duration-300 hover:scale-105 hover:bg-blue-50 dark:hover:bg-blue-950/30"
-            variant="outline"
-          >
-            Subscribe
-          </Button>
-        </Link>
+        ) : (
+          <>
+            <Link 
+              href={`/checkout?product=${product.id}&type=one_time`} 
+              className="flex-1"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <Button
+                className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 transform transition-all duration-300 hover:scale-105 hover:shadow-lg hover:shadow-blue-500/50"
+                variant="default"
+              >
+                Buy Now
+              </Button>
+            </Link>
+            <Link 
+              href={`/checkout?product=${product.id}&type=subscription&billing=monthly`} 
+              className="flex-1"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <Button
+                className="w-full border-2 border-zinc-300 dark:border-zinc-700 hover:border-blue-500 dark:hover:border-blue-400 transform transition-all duration-300 hover:scale-105 hover:bg-blue-50 dark:hover:bg-blue-950/30"
+                variant="outline"
+              >
+                Subscribe
+              </Button>
+            </Link>
+          </>
+        )}
       </CardFooter>
     </Card>
+
+    {/* Cancel Subscription Dialog */}
+    <Dialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Cancel Subscription</DialogTitle>
+          <DialogDescription>
+            Are you sure you want to cancel your subscription to {product.name}? This action cannot be undone.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button
+            variant="outline"
+            onClick={() => setCancelDialogOpen(false)}
+          >
+            No, Keep It
+          </Button>
+          <Button
+            variant="destructive"
+            onClick={handleCancel}
+            disabled={canceling}
+          >
+            {canceling ? 'Canceling...' : 'Yes, Cancel'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   )
 }
