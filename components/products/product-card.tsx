@@ -9,11 +9,15 @@ import { Check } from 'lucide-react'
 
 interface ProductCardProps {
   product: Product
+  onProductClick?: (product: Product) => void
 }
 
-export function ProductCard({ product }: ProductCardProps) {
+export function ProductCard({ product, onProductClick }: ProductCardProps) {
   return (
-    <Card className="group relative flex flex-col overflow-hidden border-zinc-200 dark:border-zinc-800 transition-all duration-500 hover:shadow-2xl hover:shadow-blue-500/20 hover:-translate-y-2 hover:border-blue-400/50">
+    <Card 
+      className="group relative flex flex-col overflow-hidden border-zinc-200 dark:border-zinc-800 transition-all duration-500 hover:shadow-2xl hover:shadow-blue-500/20 hover:-translate-y-2 hover:border-blue-400/50 cursor-pointer"
+      onClick={() => onProductClick?.(product)}
+    >
       {/* Gradient overlay that appears on hover */}
       <div className="absolute inset-0 bg-gradient-to-br from-blue-500/0 via-purple-500/0 to-pink-500/0 group-hover:from-blue-500/10 group-hover:via-purple-500/10 group-hover:to-pink-500/10 transition-all duration-500 z-10 pointer-events-none" />
 
@@ -77,7 +81,11 @@ export function ProductCard({ product }: ProductCardProps) {
       </CardContent>
 
       <CardFooter className="flex gap-2 p-6 pt-0 relative z-20">
-        <Link href={`/checkout?product=${product.id}&type=one_time`} className="flex-1">
+        <Link 
+          href={`/checkout?product=${product.id}&type=one_time`} 
+          className="flex-1"
+          onClick={(e) => e.stopPropagation()}
+        >
           <Button
             className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 transform transition-all duration-300 hover:scale-105 hover:shadow-lg hover:shadow-blue-500/50"
             variant="default"
@@ -85,7 +93,11 @@ export function ProductCard({ product }: ProductCardProps) {
             Buy Now
           </Button>
         </Link>
-        <Link href={`/checkout?product=${product.id}&type=subscription&billing=monthly`} className="flex-1">
+        <Link 
+          href={`/checkout?product=${product.id}&type=subscription&billing=monthly`} 
+          className="flex-1"
+          onClick={(e) => e.stopPropagation()}
+        >
           <Button
             className="w-full border-2 border-zinc-300 dark:border-zinc-700 hover:border-blue-500 dark:hover:border-blue-400 transform transition-all duration-300 hover:scale-105 hover:bg-blue-50 dark:hover:bg-blue-950/30"
             variant="outline"
