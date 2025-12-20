@@ -24,11 +24,103 @@ import { format } from 'date-fns'
 import Link from 'next/link'
 import type { Database } from '@/lib/supabase/types'
 import { ChevronLeft, ChevronRight, Eye } from 'lucide-react'
+import { CallRecording } from '@/components/call-recording'
 
 type Call = Database['public']['Tables']['calls']['Row']
 type Order = Database['public']['Tables']['orders']['Row']
 
 const PAGE_SIZE = 10
+
+const formatDuration = (seconds: number | null) => {
+  if (!seconds) return '—'
+  const minutes = Math.floor(seconds / 60)
+  const secs = seconds % 60
+  return `${minutes}m ${secs}s`
+}
+
+// Separate component for call details dialog to control when recording is fetched
+function CallDetailsDialog({ call }: { call: Call & { orders: Order } }) {
+  const [isOpen, setIsOpen] = useState(false)
+
+  return (
+    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+      <DialogTrigger asChild>
+        <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+          <Eye className="h-4 w-4" />
+          <span className="sr-only">View call details</span>
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Call Details</DialogTitle>
+          <DialogDescription>
+            Call ID: {call.id}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-4 text-sm">
+            <div>
+              <p className="text-zinc-600 dark:text-zinc-400">Outcome</p>
+              <p className="font-medium">{call.outcome || 'In progress'}</p>
+            </div>
+            <div>
+              <p className="text-zinc-600 dark:text-zinc-400">Duration</p>
+              <p className="font-medium">{formatDuration(call.duration_seconds)}</p>
+            </div>
+            <div>
+              <p className="text-zinc-600 dark:text-zinc-400">Current Step</p>
+              <p className="font-medium">{call.current_step || '—'}</p>
+            </div>
+            <div>
+              <p className="text-zinc-600 dark:text-zinc-400">Retry Count</p>
+              <p className="font-medium">{call.retry_count}</p>
+            </div>
+            {call.started_at && (
+              <div>
+                <p className="text-zinc-600 dark:text-zinc-400">Started</p>
+                <p className="font-medium">{format(new Date(call.started_at), 'MMM d, yyyy h:mm a')}</p>
+              </div>
+            )}
+            {call.ended_at && (
+              <div>
+                <p className="text-zinc-600 dark:text-zinc-400">Ended</p>
+                <p className="font-medium">{format(new Date(call.ended_at), 'MMM d, yyyy h:mm a')}</p>
+              </div>
+            )}
+          </div>
+
+          {call.transcript && (
+            <div>
+              <h3 className="font-semibold mb-2">Transcript</h3>
+              <div className="bg-zinc-50 dark:bg-zinc-800 rounded-lg p-3 max-h-64 overflow-y-auto">
+                <p className="text-sm whitespace-pre-wrap font-mono leading-relaxed">{call.transcript}</p>
+              </div>
+            </div>
+          )}
+
+          <CallRecording
+            callId={call.id}
+            recordingUrl={call.recording_url}
+            twilioRecordingUrl={call.twilio_recording_url}
+            vapiCallId={call.vapi_call_id}
+            shouldFetch={isOpen} // Only fetch when dialog is open
+          />
+
+          {call.responses && typeof call.responses === 'object' && (
+            <details>
+              <summary className="text-sm cursor-pointer text-blue-600 hover:underline font-medium">
+                View Responses
+              </summary>
+              <pre className="mt-2 text-xs bg-zinc-100 dark:bg-zinc-800 p-2 rounded overflow-auto">
+                {JSON.stringify(call.responses, null, 2)}
+              </pre>
+            </details>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
 
 export default function CallsPage() {
   const [calls, setCalls] = useState<(Call & { orders: Order })[]>([])
@@ -194,87 +286,7 @@ export default function CallsPage() {
                           {call.started_at ? format(new Date(call.started_at), 'MMM d, HH:mm') : '—'}
                         </TableCell>
                         <TableCell className="text-center">
-                          <Dialog>
-                            <DialogTrigger asChild>
-                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                                <Eye className="h-4 w-4" />
-                                <span className="sr-only">View call details</span>
-                              </Button>
-                            </DialogTrigger>
-                            <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
-                              <DialogHeader>
-                                <DialogTitle>Call Details</DialogTitle>
-                                <DialogDescription>
-                                  Call ID: {call.id}
-                                </DialogDescription>
-                              </DialogHeader>
-                              <div className="space-y-4">
-                                <div className="grid grid-cols-2 gap-4 text-sm">
-                                  <div>
-                                    <p className="text-zinc-600 dark:text-zinc-400">Outcome</p>
-                                    <p className="font-medium">{call.outcome || 'In progress'}</p>
-                                  </div>
-                                  <div>
-                                    <p className="text-zinc-600 dark:text-zinc-400">Duration</p>
-                                    <p className="font-medium">{formatDuration(call.duration_seconds)}</p>
-                                  </div>
-                                  <div>
-                                    <p className="text-zinc-600 dark:text-zinc-400">Current Step</p>
-                                    <p className="font-medium">{call.current_step || '—'}</p>
-                                  </div>
-                                  <div>
-                                    <p className="text-zinc-600 dark:text-zinc-400">Retry Count</p>
-                                    <p className="font-medium">{call.retry_count}</p>
-                                  </div>
-                                  {call.started_at && (
-                                    <div>
-                                      <p className="text-zinc-600 dark:text-zinc-400">Started</p>
-                                      <p className="font-medium">{format(new Date(call.started_at), 'MMM d, yyyy h:mm a')}</p>
-                                    </div>
-                                  )}
-                                  {call.ended_at && (
-                                    <div>
-                                      <p className="text-zinc-600 dark:text-zinc-400">Ended</p>
-                                      <p className="font-medium">{format(new Date(call.ended_at), 'MMM d, yyyy h:mm a')}</p>
-                                    </div>
-                                  )}
-                                </div>
-
-                                {call.transcript && (
-                                  <div>
-                                    <h3 className="font-semibold mb-2">Transcript</h3>
-                                    <div className="bg-zinc-50 dark:bg-zinc-800 rounded-lg p-3 max-h-64 overflow-y-auto">
-                                      <p className="text-sm whitespace-pre-wrap font-mono leading-relaxed">{call.transcript}</p>
-                                    </div>
-                                  </div>
-                                )}
-
-                                {(call.recording_url || call.twilio_recording_url) && (
-                                  <div>
-                                    <h3 className="font-semibold mb-2">Recording</h3>
-                                    <audio controls className="w-full">
-                                      <source
-                                        src={call.recording_url || `${call.twilio_recording_url}.mp3`}
-                                        type="audio/mpeg"
-                                      />
-                                      Your browser does not support the audio element.
-                                    </audio>
-                                  </div>
-                                )}
-
-                                {call.responses && typeof call.responses === 'object' && (
-                                  <details>
-                                    <summary className="text-sm cursor-pointer text-blue-600 hover:underline font-medium">
-                                      View Responses
-                                    </summary>
-                                    <pre className="mt-2 text-xs bg-zinc-100 dark:bg-zinc-800 p-2 rounded overflow-auto">
-                                      {JSON.stringify(call.responses, null, 2)}
-                                    </pre>
-                                  </details>
-                                )}
-                              </div>
-                            </DialogContent>
-                          </Dialog>
+                          <CallDetailsDialog call={call} />
                         </TableCell>
                       </TableRow>
                     )
