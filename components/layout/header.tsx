@@ -8,11 +8,15 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { User, ShoppingBag, CreditCard, LogOut } from 'lucide-react'
+import Image from 'next/image'
+import type { User as SupabaseUser } from '@supabase/supabase-js'
 
 export function Header() {
-  const [user, setUser] = useState<any>(null)
+  const [user, setUser] = useState<SupabaseUser | null>(null)
   const supabase = createClient()
 
   useEffect(() => {
@@ -90,16 +94,51 @@ export function Header() {
                 <DropdownMenuTrigger asChild>
                   <Button
                     variant="ghost"
-                    className="hover:bg-blue-50 dark:hover:bg-blue-950/30 hover:text-blue-600 dark:hover:text-blue-400 transition-all duration-300 hover:scale-105"
+                    className="hover:bg-blue-50 dark:hover:bg-blue-950/30 hover:text-blue-600 dark:hover:text-blue-400 transition-all duration-300 hover:scale-105 flex items-center gap-2"
                   >
-                    {user.email || 'Account'}
+                    {user.user_metadata?.avatar_url ? (
+                      <div className="relative w-8 h-8 rounded-full overflow-hidden border border-zinc-200 dark:border-zinc-800">
+                        <Image
+                          src={user.user_metadata.avatar_url}
+                          alt="Profile"
+                          fill
+                          className="object-cover"
+                          sizes="32px"
+                        />
+                      </div>
+                    ) : (
+                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center">
+                        <User className="w-4 h-4 text-white" />
+                      </div>
+                    )}
+                    <span className="hidden sm:inline">{user.email || 'Account'}</span>
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="border-zinc-200 dark:border-zinc-800">
+                <DropdownMenuContent align="end" className="border-zinc-200 dark:border-zinc-800 w-56">
+                  <Link href="/profile">
+                    <DropdownMenuItem className="cursor-pointer">
+                      <User className="mr-2 h-4 w-4" />
+                      Profile
+                    </DropdownMenuItem>
+                  </Link>
+                  <Link href="/my-purchases">
+                    <DropdownMenuItem className="cursor-pointer">
+                      <ShoppingBag className="mr-2 h-4 w-4" />
+                      My Purchases
+                    </DropdownMenuItem>
+                  </Link>
+                  <Link href="/my-subscriptions">
+                    <DropdownMenuItem className="cursor-pointer">
+                      <CreditCard className="mr-2 h-4 w-4" />
+                      My Subscriptions
+                    </DropdownMenuItem>
+                  </Link>
+                  <DropdownMenuSeparator />
                   <DropdownMenuItem
                     onClick={handleSignOut}
-                    className="hover:bg-red-50 dark:hover:bg-red-950/30 hover:text-red-600 dark:hover:text-red-400 transition-colors duration-200"
+                    className="hover:bg-red-50 dark:hover:bg-red-950/30 hover:text-red-600 dark:hover:text-red-400 transition-colors duration-200 cursor-pointer"
                   >
+                    <LogOut className="mr-2 h-4 w-4" />
                     Sign Out
                   </DropdownMenuItem>
                 </DropdownMenuContent>
